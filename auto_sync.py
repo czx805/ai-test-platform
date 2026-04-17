@@ -12,6 +12,12 @@ import os
 import json
 import re
 import datetime
+import hmac
+import hashlib
+import base64
+import urllib.parse
+import urllib.request
+import time
 
 # Fix Windows GBK stdout encoding
 if sys.stdout.encoding != "utf-8":
@@ -23,6 +29,10 @@ REPO_DIR     = r"D:\aitest\wukong\ai-test-platform"
 VENV_PY      = os.path.join(REPO_DIR, "venvs", "Scripts", "python.exe")
 REPORTS_JSON = os.path.join(REPO_DIR, "reports", "report_data.json")
 LOG_FILE     = os.path.join(REPO_DIR, "reports", "sync.log")
+
+# DingTalk webhook config
+DINGTALK_ACCESS_TOKEN = "62bc5ff38f7b6a10421c698a27a3ee0f5623feeb85f8c200c3bead3e56e2450a"
+DINGTALK_SECRET       = "SEC004404742933dbe064b38b315ee25084ccede761f6a4e847e61e15d60ae5dc68"
 
 
 def log(msg):
@@ -59,6 +69,44 @@ def git_has_remote():
 def git_last_sha():
     rc, out, _ = run("git rev-parse --short HEAD")
     return out.strip()
+
+
+def send_dingtalk(title, text, at_all=False):
+    """Send markdown message to DingTalk group robot."""
+    try:
+        timestamp = str(round(time.time() * 1000))
+        string_to_sign = f"{timestamp}\n{DINGTALK_SECRET}"
+        hmac_code = hmac.new(
+            DINGTALK_SECRET.encode("utf-8"),
+            string_to_sign.encode("utf-8"),
+            digestmod=hashlib.sha256,
+        ).digest()
+        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+        url = (
+            f"https://oapi.dingtalk.com/robot/send"
+            f"?access_token={DINGTALK_ACCESS_TOKEN}"
+            f"&timestamp={timestamp}&sign={sign}"
+        )
+        data = {
+            "msgtype": "markdown",
+            "markdown": {"title": title, "text": text},
+            "at": {"isAtAll": at_all},
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = urllib.request.urlopen(req, timeout=10)
+        result = json.loads(resp.read().decode("utf-8"))
+        if result.get("errcode") == 0:
+            log("DingTalk: message sent OK")
+        else:
+            log(f"DingTalk: send failed - {result}")
+        return result
+    except Exception as e:
+        log(f"DingTalk: send error - {e}")
+        return None
 
 
 def run_tests():
@@ -157,8 +205,9 @@ def do_sync():
 
 def main():
     dry_run = "--dry-run" in sys.argv
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    print(f"[{'DRY RUN' if dry_run else 'LIVE'}] auto_sync.py  |  {datetime.datetime.now():%Y-%m-%d %H:%M:%S}")
+    print(f"[{'DRY RUN' if dry_run else 'LIVE'}] auto_sync.py  |  {now_str}")
     print(f"Repo: {REPO_DIR}")
 
     # git status check
@@ -178,23 +227,49 @@ def main():
     passed, failed, total = run_tests()
     print(f"RESULT: {passed} pass / {failed} fail / {total} total")
 
+    # build DingTalk notification
+    if failed == 0 and total > 0:
+        status_emoji = "✅"
+        status_text = "全部通过"
+    elif failed > 0:
+        status_emoji = "❌"
+        status_text = f"{failed} 个失败"
+    else:
+        status_emoji = "⚠️"
+        status_text = "无测试用例"
+
+    dingtalk_text = (
+        f"## {status_emoji} AI测试平台 - 自动测试报告\n\n"
+        f"- **时间**: {now_str}\n"
+        f"- **结果**: {status_text}\n"
+        f"- **通过**: {passed} / **失败**: {failed} / **总计**: {total}\n"
+    )
+
     if total == 0:
         log("WARN: no test collected, skip sync")
+        send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
         return
 
     if failed > 0:
         log(f"FAIL: {failed} case(s) failed, skip push")
+        send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
         return
 
     if passed > 0 and failed == 0:
         log("PASS: all green, sync now ...")
         ok = do_sync()
+        sha = git_last_sha()
         if ok:
             log("DONE")
+            dingtalk_text += f"\n- **Git Push**: 成功 (commit `{sha}`)\n"
+            send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
         else:
             log("SYNC FAILED")
+            dingtalk_text += f"\n- **Git Push**: 失败\n"
+            send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
     else:
         log(f"UNKNOWN state passed={passed} failed={failed}")
+        send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
 
 
 if __name__ == "__main__":
