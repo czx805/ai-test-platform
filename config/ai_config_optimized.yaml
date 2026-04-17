@@ -1,0 +1,124 @@
+# AI优化配置
+ai:
+  # OpenAI API配置
+  openai:
+    api_key: "sk-b318447dc3a248859aaf8c7f6f4ae69f"  # 请填入您的OpenAI API密钥
+    model: "gpt-4"
+    temperature: 0.7
+    max_tokens: 2000
+    
+  # Claude API配置
+  anthropic:
+    api_key: ""  # 请填入您的Claude API密钥
+    model: "claude-3-sonnet"
+    temperature: 0.7
+    
+  # 本地AI模型配置
+  local:
+    enabled: false
+    model_path: ""
+    
+# AI提示词配置
+prompts:
+  # Gherkin生成提示词
+  gherkin_generation:
+    system: "你是一个专业的测试用例生成专家，擅长将自然语言描述转换为Gherkin格式的测试用例。"
+    user: """
+请将以下测试描述转换为详细的Gherkin测试用例：
+{description}
+
+平台：{platform}
+
+要求：
+1. 生成完整的Feature描述
+2. 生成清晰的Scenario场景
+3. 包含Given（前置条件）、When（操作步骤）、Then（预期结果）
+4. 步骤要详细具体，包含具体的操作和验证点
+5. 考虑异常情况和边界测试
+6. 输出格式要符合Gherkin规范
+"""
+    
+  # 测试代码生成提示词
+  code_generation:
+    system: "你是一个专业的自动化测试代码生成专家，擅长将Gherkin测试用例转换为Python测试代码。"
+    user: """
+请将以下Gherkin测试用例转换为Python测试代码：
+{gherkin}
+
+平台：{platform}
+
+要求：
+1. 使用{framework}测试框架
+2. 生成完整的测试代码，包括setup和teardown
+3. 包含详细的注释说明
+4. 考虑错误处理和异常情况
+5. 代码要可执行和可维护
+"""
+    
+  # WEB测试代码模板
+  web_template:
+    framework: "playwright"
+    base_url: "http://localhost:8080"
+    
+  # 小程序测试代码模板
+  miniprogram_template:
+    framework: "miniprogram_automation"
+    appid: "your_appid"
+    
+# 测试场景模板
+test_templates:
+  # WEB测试场景
+  web:
+    login: 
+      description: "登录功能测试"
+      keywords: ["登录", "用户名", "密码", "验证码", "登录成功", "登录失败"]
+      steps: ["打开登录页面", "输入用户名", "输入密码", "点击登录按钮", "验证登录结果"]
+      expected_results: ["登录成功提示", "跳转到首页", "用户信息正确显示"]
+    
+    search:
+      description: "搜索功能测试"
+      keywords: ["搜索", "搜索框", "搜索结果", "关键词", "搜索按钮"]
+      steps: ["打开首页", "点击搜索框", "输入关键词", "点击搜索按钮", "查看搜索结果"]
+      expected_results: ["搜索结果列表", "搜索结果显示", "搜索结果排序正确"]
+    
+    payment:
+      description: "支付功能测试"
+      keywords: ["支付", "付款", "订单", "支付成功", "支付失败"]
+      steps: ["选择商品", "点击购买按钮", "填写支付信息", "确认支付", "查看支付结果"]
+      expected_results: ["支付成功提示", "订单状态更新", "支付记录生成"]
+    
+  # 小程序测试场景
+  miniprogram:
+    login:
+      description: "小程序登录测试"
+      keywords: ["小程序登录", "微信登录", "授权登录", "登录成功"]
+      steps: ["打开小程序", "点击登录按钮", "授权登录", "验证登录状态"]
+      expected_results: ["登录成功", "用户信息显示", "登录状态保持"]
+    
+    search:
+      description: "小程序搜索测试"
+      keywords: ["小程序搜索", "搜索框", "搜索结果", "搜索按钮"]
+      steps: ["打开小程序首页", "点击搜索框", "输入关键词", "点击搜索按钮", "查看搜索结果"]
+      expected_results: ["搜索结果列表", "搜索结果显示", "搜索功能正常"]
+    
+    cart:
+      description: "小程序购物车测试"
+      keywords: ["购物车", "添加商品", "删除商品", "结算", "购物车列表"]
+      steps: ["浏览商品", "添加商品到购物车", "查看购物车", "修改商品数量", "结算购物车"]
+      expected_results: ["商品添加成功", "购物车列表更新", "结算成功"]
+
+# MCP配置
+mcp:
+  servers:
+    web:
+      port: 8000
+      protocol: "stdio"
+      
+    miniprogram:
+      port: 8001
+      protocol: "stdio"
+      
+# 测试配置
+test:
+  timeout: 300  # 测试超时时间（秒）
+  retry_count: 3  # 失败重试次数

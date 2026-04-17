@@ -1,0 +1,82 @@
+# WEB测试配置
+
+web:
+  # 浏览器配置
+  browsers:
+    chrome:
+      enabled: true
+      headless: false
+      executable_path: "https://test6688.jh119.cn/business/#/login"  # Chrome浏览器路径
+      
+    firefox:
+      enabled: true
+      headless: false
+      executable_path: ""  # Firefox浏览器路径
+      
+    edge:
+      enabled: true
+      headless: false
+      executable_path: ""  # Edge浏览器路径
+  
+  # 浏览器参数
+  browser_args:
+    timeout: 30000  # 超时时间（毫秒）
+    viewport: "1920x1080"  # 视口大小
+    wait_for: "networkidle"  # 等待状态
+    slow_mo: 100  # 操作延迟（毫秒）
+    
+  # 测试网站配置
+  test_urls:
+    base_url: "http://localhost:8080"
+    login_url: "/login"
+    dashboard_url: "/dashboard"
+    api_base_url: "http://localhost:8080/api"
+    
+  # 元素定位策略
+  element_locator:
+    # 定位优先级
+    priority: ["id", "name", "class", "xpath", "css"]
+    
+    # 等待时间
+    timeout: 5000  # 毫秒
+    
+    # 默认定位器
+    default_selectors:
+      login_button: "button[type='submit']"
+      search_input: "input[type='search']"
+      submit_button: "button[type='submit']"
+      
+  # 视觉回归测试配置
+  visual_regression:
+    enabled: true
+    threshold: 0.95  # 相似度阈值
+    screenshot_dir: "logs/screenshots"
+    reference_dir: "reference"
+    
+  # API测试配置
+  api_test:
+    enabled: true
+    timeout: 5000  # 毫秒
+    retry_count: 3  # 重试次数
+    
+  # 性能测试配置
+  performance_test:
+    enabled: true
+    metrics:
+      load_time: true
+      dom_size: true
+      memory_usage: true
+      request_count: true
+    
+  # 报告配置
+  report:
+    format: "json"  # json, html, excel
+    include_screenshots: true
+    include_logs: true
+    include_performance: true
+    
+  # 日志配置
+  logging:
+    level: "INFO"
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    file: "logs/web_test.log"

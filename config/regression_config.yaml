@@ -1,0 +1,44 @@
+# 回归测试配置
+
+regression:
+  # 回归策略
+  strategy: "smart"  # smart:智能筛选, all:全量回归, priority:优先级筛选
+  
+  # 智能筛选阈值
+  threshold: 0.8
+  
+  # 最大测试用例数量
+  max_tests: 100
+  
+  # 优先级权重
+  priority_weight:
+    high: 1.0
+    medium: 0.7
+    low: 0.3
+  
+  # 变更类型权重
+  change_weight:
+    ui: 0.4
+    api: 0.4
+    function: 0.3
+    performance: 0.2
+    
+  # 执行策略
+  execution:
+    parallel: true  # 是否并行执行
+    timeout: 300  # 超时时间（秒）
+    retry_count: 3  # 失败重试次数
+    
+  # 报告配置
+  report:
+    format: "json"  # json, html, excel
+    include_screenshots: true
+    include_logs: true
+    include_performance: true
+    
+  # 通知配置
+  notification:
+    enabled: true
+    email: true
+    slack: false
+    webhook: false

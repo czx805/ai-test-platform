@@ -1,0 +1,38 @@
+# AI配置
+ai:
+  # OpenAI API配置
+  openai:
+    api_key: "sk-b318447dc3a248859aaf8c7f6f4ae69f"  # 请填入您的OpenAI API密钥
+    model: "gpt-4"
+    temperature: 0.7
+    
+  # Claude API配置
+  anthropic:
+    api_key: ""  # 请填入您的Claude API密钥
+    model: "claude-3-sonnet"
+    
+  # 本地AI模型配置
+  local:
+    enabled: false
+    model_path: ""
+    
+  # 生成参数
+  generation:
+    max_tokens: 2000
+    timeout: 30
+    
+# MCP配置
+mcp:
+  servers:
+    web:
+      port: 8000
+      protocol: "stdio"
+      
+    miniprogram:
+      port: 8001
+      protocol: "stdio"
+      
+# 测试配置
+test:
+  timeout: 300  # 测试超时时间（秒）
+  retry_count: 3  # 失败重试次数

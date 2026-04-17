@@ -1,0 +1,11 @@
+# AI Test Platform — 实际依赖
+# 虚拟环境位置: venvs\Scripts\python.exe
+
+# 测试框架
+pytest==7.4.3
+pytest-xdist==3.3.1
+pytest-html==4.2.0
+pytest-timeout==2.4.0
+
+# 浏览器自动化
+playwright==1.40.0
