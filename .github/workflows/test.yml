@@ -1,0 +1,130 @@
+# GitHub Actions 工作流 - 自动化测试
+# 触发：定时（工作日 9:00 UTC = 北京时间 17:00）+ push 到 main 分支
+
+name: Auto Test
+
+on:
+  schedule:
+    # 每天 UTC 1:00 = 北京时间 9:00，周一到周五
+    - cron: '0 1 * * 1-5'
+  push:
+    branches: [main]
+  workflow_dispatch:
+    # 支持手动触发
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    
+    steps:
+      # 1. 拉取代码
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. 设置 Python 环境
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. 安装依赖
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium
+
+      # 4. 运行测试
+      - name: Run tests
+        shell: powershell
+        run: |
+          pytest tests/ -q --tb=short --timeout=90
+
+      # 5. 生成报告（触发 conftest.py 钩子）
+      - name: Generate report
+        if: always()
+        shell: powershell
+        run: |
+          python generate_report.py
+
+      # 6. 读取测试结果
+      - name: Read test results
+        id: result
+        if: always()
+        shell: powershell
+        run: |
+          $json = Get-Content -Path reports/report_data.json -Raw | ConvertFrom-Json
+          Write-Output "::set-output name=passed::$($json.passed)"
+          Write-Output "::set-output name=failed::$($json.failed)"
+          Write-Output "::set-output name=total::$($json.total)"
+        env:
+          PASSED: ${{ steps.result.outputs.passed }}
+          FAILED: ${{ steps.result.outputs.failed }}
+          TOTAL: ${{ steps.result.outputs.total }}
+
+      # 7. 发送钉钉通知
+      - name: Notify DingTalk
+        if: always()
+        shell: powershell
+        run: |
+          $passed = $env:PASSED
+          $failed = $env:FAILED
+          $total = $env:TOTAL
+          
+          # 默认值
+          if (-not $passed) { $passed = "?" }
+          if (-not $failed) { $failed = "?" }
+          if (-not $total) { $total = "?" }
+          
+          # 时间
+          $timestamp = [int64](Get-Date -UFormat %s) * 1000
+          
+          # 签名
+          $secret = "$env:DINGTALK_SECRET"
+          $secret_enc = [System.Text.Encoding]::UTF8.GetBytes($secret)
+          $string_to_sign = "{0}`n$timestamp" -f $env:DINGTALK_TOKEN
+          $string_enc = [System.Text.Encoding]::UTF8.GetBytes($string_to_sign)
+          $hmac = New-Object System.Security.Cryptography.HMACSHA256
+          $hmac.Key = $secret_enc
+          $sign = [Convert]::ToBase64String($hmac.ComputeHash($string_enc))
+          $sign_enc = [System.Web.HttpUtility]::UrlEncode($sign)
+          
+          $url = "https://oapi.dingtalk.com/robot/send?access_token=$env:DINGTALK_TOKEN&timestamp=$timestamp&sign=$sign_enc"
+          
+          # 构建消息
+          $status = if ($failed -gt 0) { "❌ FAIL" } else { "✅ PASS" }
+          $commit = "$env:GITHUB_SHA".Substring(0, 7)
+          $workflow = if ($env:GITHUB_EVENT_NAME -eq "schedule") { "定时任务" } else { "Push" }
+          
+          $jsonBody = @{
+            msgtype = "markdown"
+            markdown = @{
+              title = "测试结果"
+              text = "## $status - $passed/$total 通过
+                      
+> 来源: $workflow
+> 提交: $commit
+> 运行时长: ${{ github.run_id }}
+                      "
+            }
+          } | ConvertTo-Json -Depth 3
+          
+          Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json"
+        env:
+          DINGTALK_TOKEN: ${{ secrets.DINGTALK_TOKEN }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          PASSED: ${{ steps.result.outputs.passed }}
+          FAILED: ${{ steps.result.outputs.failed }}
+          TOTAL: ${{ steps.result.outputs.total }}
+
+      # 8. 上传测试报告和截图
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            reports/
+            logs/
+          retention-days: 7

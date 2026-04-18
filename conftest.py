@@ -95,11 +95,43 @@ def pytest_sessionfinish(session, exitstatus):
     print(f"\n[Report] JSON written: {out_path}")
 
 
+def _should_run_headless():
+    """判断是否需要 headless 模式：无桌面环境（cron/CI/远程）自动切换"""
+    # 环境变量显式指定
+    env = os.environ.get("PLAYWRIGHT_HEADLESS", "").lower()
+    if env in ("1", "true", "yes"):
+        return True
+    if env in ("0", "false", "no"):
+        return False
+    # Windows: 无交互式桌面站 → headless
+    if os.name == "nt":
+        session_name = os.environ.get("SESSIONNAME", "")
+        # 没有 SESSIONNAME 或包含 RDP/Service 字样 → 无桌面
+        if not session_name or "RDP" in session_name.upper() or "Service" in session_name:
+            # 再检查是否有 Explorer 进程（桌面存在的标志）
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["tasklist", "/FI", "IMAGENAME eq explorer.exe"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if "explorer.exe" not in result.stdout:
+                    return True
+            except Exception:
+                return True
+    # Linux/macOS: 无 DISPLAY → headless
+    if os.name != "nt" and not os.environ.get("DISPLAY"):
+        return True
+    return False
+
+
 @pytest.fixture(scope="session")
 def browser():
     """会话级浏览器（所有测试共享一个实例，最高效）"""
+    headless = _should_run_headless()
+    print(f"[conftest] Browser headless={headless}")
     pw = sync_playwright().start()
-    browser = pw.chromium.launch(headless=False)
+    browser = pw.chromium.launch(headless=headless)
     yield browser
     # 强制关闭所有 context 和 page
     try:
