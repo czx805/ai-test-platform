@@ -1,5 +1,5 @@
 # GitHub Actions 工作流 - 自动化测试
-# 触发：定时（工作日 9:00 UTC = 北京时间 17:00）+ push 到 main 分支
+# 触发：定时（工作日 9:00 UTC = 北京时间 17:00）+ push 到 master 分支
 
 name: Auto Test
 
@@ -93,20 +93,17 @@ jobs:
           $url = "https://oapi.dingtalk.com/robot/send?access_token=$env:DINGTALK_TOKEN&timestamp=$timestamp&sign=$sign_enc"
           
           # 构建消息
-          $status = if ($failed -gt 0) { "❌ FAIL" } else { "✅ PASS" }
+          $status = if ($failed -gt 0) { "FAIL" } else { "PASS" }
           $commit = "$env:GITHUB_SHA".Substring(0, 7)
           $workflow = if ($env:GITHUB_EVENT_NAME -eq "schedule") { "定时任务" } else { "Push" }
+          
+          $text = "## $status - $passed/$total 通过`n`n> 来源: $workflow`n> 提交: $commit`n> 运行时长: ${{ github.run_id }}"
           
           $jsonBody = @{
             msgtype = "markdown"
             markdown = @{
               title = "测试结果"
-              text = "## $status - $passed/$total 通过
-                      
-> 来源: $workflow
-> 提交: $commit
-> 运行时长: ${{ github.run_id }}
-                      "
+              text = $text
             }
           } | ConvertTo-Json -Depth 3
           
