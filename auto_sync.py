@@ -327,6 +327,27 @@ def main():
         f"- **通过**: {passed} / **失败**: {failed} / **总计**: {total}\n"
     )
 
+    # 失败用例详情
+    if failed > 0 and os.path.exists(REPORTS_JSON):
+        try:
+            with open(REPORTS_JSON, encoding="utf-8") as f:
+                report = json.load(f)
+            fail_cases = [t for t in report.get("tests", []) if t.get("outcome") == "failed"]
+            if fail_cases:
+                dingtalk_text += "\n---\n\n### ❌ 失败用例详情\n\n"
+                for i, t in enumerate(fail_cases, 1):
+                    name = t.get("title") or t.get("nodeid", "unknown")
+                    dur = t.get("duration", 0)
+                    msg = t.get("failure_msg", "").strip()
+                    # 截断过长的错误信息（钉钉 markdown 限制）
+                    if len(msg) > 300:
+                        msg = msg[:300] + "…"
+                    dingtalk_text += f"**{i}. {name}** ({dur:.1f}s)\n\n"
+                    if msg:
+                        dingtalk_text += f"> {msg}\n\n"
+        except Exception as e:
+            log(f"report parse error (fail detail): {e}")
+
     if total == 0:
         log("WARN: no test collected, skip sync")
         send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
