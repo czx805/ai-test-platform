@@ -46,13 +46,92 @@ def log(msg):
         pass
 
 
-def run(cmd, cwd=None, capture=True):
+def run(cmd, cwd=None, capture=True, timeout=None):
     kwargs = {"cwd": cwd or REPO_DIR, "shell": True}
     if capture:
         kwargs["stdout"] = subprocess.PIPE
         kwargs["stderr"] = subprocess.PIPE
-    r = subprocess.run(cmd, **kwargs)
+    if timeout:
+        kwargs["timeout"] = timeout
+    try:
+        r = subprocess.run(cmd, **kwargs)
+    except subprocess.TimeoutExpired as e:
+        log(f"TIMEOUT: process killed after {timeout}s")
+        out = (e.stdout or b"").decode("utf-8", errors="replace")
+        err = (e.stderr or b"").decode("utf-8", errors="replace")
+        return -1, out, err
     return r.returncode, (r.stdout or b"").decode("utf-8", errors="replace"), (r.stderr or b"").decode("utf-8", errors="replace")
+
+
+def run_pytest(cmd, timeout=600):
+    """
+    运行 pytest 并在超时后强制杀进程树。
+    使用 Popen + 外部计时器，避免 Playwright teardown 无限卡死导致 subprocess.run() 永久阻塞。
+    """
+    import threading, time, signal
+
+    log(f"[run_pytest] cmd: {cmd}")
+    log(f"[run_pytest] timeout: {timeout}s")
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=REPO_DIR,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        bufsize=1,
+    )
+
+    lines = []
+    timer_active = [True]   # 用 list 方便在嵌套函数中修改
+    killed = [False]
+
+    def _read_stdout():
+        try:
+            for line in iter(proc.stdout.readline, ""):
+                if line:
+                    lines.append(line)
+                    print(line, end="", flush=True)
+        except Exception:
+            pass
+
+    def _kill_after_timeout():
+        time.sleep(timeout)
+        if timer_active[0] and proc.poll() is None:
+            killed[0] = True
+            log(f"[run_pytest] HARD TIMEOUT after {timeout}s — killing process tree")
+            try:
+                if os.name == "nt":
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
+                    )
+                else:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception as e:
+                log(f"[run_pytest] kill error: {e}")
+
+    reader = threading.Thread(target=_read_stdout, daemon=True)
+    killer = threading.Thread(target=_kill_after_timeout, daemon=True)
+    reader.start()
+    killer.start()
+
+    proc.wait()
+    timer_active[0] = False
+    reader.join(timeout=5)
+    killer.join(timeout=1)
+
+    out = "".join(lines)
+    rc = proc.returncode
+
+    if killed[0]:
+        log(f"[run_pytest] Killed by timeout (rc={rc})")
+        return -1, out, ""
+    else:
+        log(f"[run_pytest] Exit code: {rc}")
+        return rc, out, ""
 
 
 def git_status():
@@ -119,7 +198,8 @@ def run_tests():
     log("=" * 60)
 
     py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
-    rc, out, err = run(f'"{py}" -m pytest tests/ -v --tb=short 2>&1')
+    cmd = f'"{py}" -m pytest tests/ -v --tb=short --timeout=120'
+    rc, out, err = run_pytest(cmd, timeout=3600)
 
     # print output to console
     print(out)
@@ -187,7 +267,9 @@ def do_sync():
         msg = f"auto-sync @ {now:%Y-%m-%d %H:%M}"
 
     log(f"COMMIT: {msg}")
-    rc, _, err = run(f"git commit -m {repr(msg)}")
+    # 用双引号包裹 commit message，内部双引号转义
+    safe_msg = msg.replace('"', '\\"')
+    rc, _, err = run(f'git commit -m "{safe_msg}"')
     if rc != 0:
         log(f"ERROR: git commit failed: {err}")
         return False

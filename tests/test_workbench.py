@@ -162,8 +162,11 @@ def test_navigate_multiple_pages(workbench_page):
 def test_workbench_refresh(workbench_page):
     """工作台刷新后应保持在工作台"""
     wp = workbench_page
-    wp.page.reload()
-    wp.page.wait_for_load_state("networkidle")
+    wp.page.reload(wait_until="domcontentloaded")
+    try:
+        wp.page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
     wp.page.wait_for_timeout(2000)
     wp.screenshot("logs/wb_refresh.png")
 

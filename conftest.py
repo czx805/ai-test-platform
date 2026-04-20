@@ -133,19 +133,11 @@ def browser():
     pw = sync_playwright().start()
     browser = pw.chromium.launch(headless=headless)
     yield browser
-    # 强制关闭所有 context 和 page
-    try:
-        for ctx in browser.contexts:
-            for pg in ctx.pages:
-                try:
-                    pg.close()
-                except Exception:
-                    pass
-            ctx.close()
-    except Exception:
-        pass
-    browser.close()
-    pw.stop()
+
+    # teardown 交给外部进程清理（见 auto_sync.py）
+    # Playwright C 扩展线程无法被 pytest-timeout 中断，
+    # 所以这里不做任何清理，让 pytest 进程自然退出或被外部 SIGKILL
+    # 浏览器资源（chromium 进程）会在进程退出时被 OS 回收
 
 
 # ── 登录测试用（function scope，隔离 cookie） ──────────────────────
@@ -155,7 +147,9 @@ def context(browser):
     """函数级 Context（每个测试用例独立上下文，cookie 不互相污染）"""
     ctx = browser.new_context(viewport={"width": 1280, "height": 720})
     yield ctx
-    ctx.close()
+    # 不调用 ctx.close() — Playwright 连接关闭会触发 C 扩展线程 hang，
+    # 导致后续所有测试的 Playwright 操作超时。
+    # OS 会在 pytest 进程退出时自动回收这些资源。
 
 
 @pytest.fixture(scope="function")
@@ -163,7 +157,7 @@ def page(context):
     """函数级 Page（每个测试用例独占一页）"""
     p = context.new_page()
     yield p
-    p.close()
+    # 不调用 p.close()，同上
 
 
 @pytest.fixture(scope="function")
@@ -213,7 +207,9 @@ def logged_in_context(browser):
     page.close()
 
     yield ctx
-    ctx.close()
+    # 不调用 ctx.close() — Playwright teardown hang 会阻塞后续所有测试，
+    # pytest-timeout 无法中断 C 扩展线程的 close() 调用。
+    # OS 在 pytest 进程退出时自动回收资源。
 
 
 @pytest.fixture(scope="function")
@@ -226,13 +222,16 @@ def workbench_page(logged_in_context):
     from pages.workbench_page import WorkbenchPage
 
     page = logged_in_context.new_page()
-    page.goto("https://test6688.jh119.cn/business/#/workbench")
-    page.wait_for_load_state("networkidle")
+    page.goto("https://test6688.jh119.cn/business/#/workbench", wait_until="domcontentloaded")
+    try:
+        page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
     page.wait_for_timeout(1000)
 
     wp = WorkbenchPage(page)
     yield wp
-    page.close()
+    # 不调用 page.close()，同上
 
 
 # ── 合同管理测试用（module scope） ──────────────────────────────
@@ -250,4 +249,4 @@ def contract_page(logged_in_context):
     cp = ContractPage(page)
     cp.goto()
     yield cp
-    page.close()
+    # 不调用 page.close()，同上

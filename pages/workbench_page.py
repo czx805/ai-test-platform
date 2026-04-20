@@ -6,6 +6,17 @@ import time
 from playwright.sync_api import Page
 
 
+def _safe_networkidle(page, timeout=15000):
+    """等待 networkidle，超时后降级为 domcontentloaded（防止无头模式卡死）"""
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout)
+    except Exception:
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=5000)
+        except Exception:
+            pass
+
+
 class WorkbenchPage:
     """工作台页面对象"""
 
@@ -72,7 +83,7 @@ class WorkbenchPage:
         if link.count() == 0:
             raise AssertionError(f"导航项 [{info['name']}] 未找到: {info['href']}")
         link.first.click()
-        self.page.wait_for_load_state("networkidle")
+        _safe_networkidle(self.page)
         self.page.wait_for_timeout(1000)
 
     def is_nav_item_visible(self, key: str) -> bool:

@@ -18,6 +18,17 @@ class LoginPage:
 
     # ── 基础操作 ──────────────────────────────────────────────
 
+    @staticmethod
+    def _safe_networkidle(page, timeout=5000):
+        """等待 networkidle，超时后降级为 domcontentloaded（防止无头模式卡死）"""
+        try:
+            page.wait_for_load_state("networkidle", timeout=timeout)
+        except Exception:
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=3000)
+            except Exception:
+                pass
+
     def goto(self, clear_cookies: bool = True):
         """
         访问登录页
@@ -26,8 +37,8 @@ class LoginPage:
         """
         if clear_cookies:
             self.page.context.clear_cookies()
-        self.page.goto(self.URL)
-        self.page.wait_for_load_state("networkidle")
+        self.page.goto(self.URL, wait_until="domcontentloaded")
+        self._safe_networkidle(self.page)
         self.page.wait_for_timeout(2000)
 
     def fill_phone(self, phone: str):
@@ -90,28 +101,29 @@ class LoginPage:
         return self.page.locator("button").count()
 
     def click_submit_button(self):
-        """直接点击'登 录'按钮（而非按 Enter）"""
+        """直接点击'登 录'按钮（而非按 Enter），最多等 15 秒"""
         self.page.locator("button").nth(1).click(force=True)
         self.page.wait_for_timeout(3000)
         if "#/login" not in self.page.url:
             return
-        for _ in range(7):
+        for _ in range(12):
             time.sleep(1)
             if "#/login" not in self.page.url:
                 return
 
     def submit(self):
-        """提交登录（按 Enter），等待 URL 变化或 loading 结束"""
+        """提交登录，等待 URL 变化（跳离 /login 表示登录成功）。最多等 15 秒。"""
         self.page.locator("input").nth(1).press("Enter")
-        self.page.wait_for_timeout(3000)
-        # 如果 URL 已跳转，不需要继续等
-        if "#/login" not in self.page.url:
-            return
-        # 如果还在 login 页，继续轮询（按钮可能一直 loading 是正常的）
-        for _ in range(7):
-            time.sleep(1)
-            if "#/login" not in self.page.url:
-                return
+        # 用 Playwright wait_for_url 代替 time.sleep，pytest-timeout 可以中断。
+        # !#/login 不是有效否定语法，改用 JS 判断：等待 URL 不再包含 #/login。
+        try:
+            self.page.wait_for_function(
+                "() => !window.location.hash.includes('#/login')",
+                timeout=15000,
+            )
+        except Exception:
+            # 超时说明仍在 login 页（登录失败），继续往下走
+            pass
 
     # ── 提交后处理 ──────────────────────────────────────────────
 

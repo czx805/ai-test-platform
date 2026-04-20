@@ -184,8 +184,11 @@ def test_session_persist_after_refresh(login_page):
     lp.screenshot("logs/po_refresh_before.png")
 
     # 刷新当前页面
-    lp.page.reload()
-    lp.page.wait_for_load_state("networkidle")
+    lp.page.reload(wait_until="domcontentloaded")
+    try:
+        lp.page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
     lp.page.wait_for_timeout(2000)
     lp.screenshot("logs/po_refresh_after.png")
 
@@ -200,7 +203,11 @@ def test_session_persist_after_navigate(login_page):
     lp.screenshot("logs/po_nav_before.png")
 
     # 手动访问登录页 URL（不清 Cookie，保留登录态）
-    lp.page.goto(LoginPage.URL, wait_until="networkidle")
+    lp.page.goto(LoginPage.URL, wait_until="domcontentloaded")
+    try:
+        lp.page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
     lp.page.wait_for_timeout(2000)
     lp.screenshot("logs/po_nav_after.png")
 
@@ -221,7 +228,10 @@ def test_back_from_workbench(login_page):
     lp.screenshot("logs/po_back_before.png")
 
     lp.page.go_back()
-    lp.page.wait_for_load_state("networkidle")
+    try:
+        lp.page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
     lp.page.wait_for_timeout(2000)
     lp.screenshot("logs/po_back_after.png")
     url_after = lp.page.url
