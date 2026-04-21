@@ -6,7 +6,7 @@ import time
 from playwright.sync_api import Page, Locator
 
 
-def _safe_networkidle(page, timeout=15000):
+def _safe_networkidle(page, timeout=20000):
     """等待 networkidle，超时后降级为 domcontentloaded（防止无头模式卡死）"""
     try:
         page.wait_for_load_state("networkidle", timeout=timeout)
@@ -47,11 +47,33 @@ class ContractPage:
     def is_at_contract(self) -> bool:
         return "#/contract" in self.page.url
 
+    # 表格元素等待超时（ms），并行 + headless 渲染慢，从 15s 延长到 30s
+    GOTO_TABLE_TIMEOUT = 30_000
+
     def goto(self):
+        """
+        导航到合同管理列表页，等待页面完全加载。
+        超时阈值由 GOTO_TABLE_TIMEOUT 常量控制（默认 30s）。
+        并行 + headless 环境下表格渲染较慢，适当延长等待时间。
+        """
         self.page.goto(self.URL, wait_until="domcontentloaded")
-        _safe_networkidle(self.page)
-        self.page.wait_for_selector(".ant-table", timeout=15000)
-        self.page.wait_for_timeout(2000)
+        # 先等 networkidle（最多 20s），超时则降级 — 防止无限卡死
+        _safe_networkidle(self.page, timeout=20000)
+        # 检查是否被重定向到登录页（session 过期）
+        if "#/login" in self.page.url or "login" in self.page.url.lower():
+            raise RuntimeError(
+                "登录态已过期，页面被重定向到登录页。contract_page 无法继续。"
+            )
+        # 等待表格出现（默认 30s，配置在 GOTO_TABLE_TIMEOUT）
+        try:
+            self.page.wait_for_selector(
+                ".ant-table", timeout=self.GOTO_TABLE_TIMEOUT
+            )
+        except Exception:
+            # 表格超时，截图留证，帮助诊断是渲染慢还是页面结构变了
+            self.page.screenshot(path="logs/contract_table_timeout.png")
+            raise
+        self.page.wait_for_timeout(1000)
 
     def screenshot(self, path: str):
         self.page.screenshot(path=path)
