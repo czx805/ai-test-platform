@@ -198,8 +198,11 @@ def run_tests():
     log("=" * 60)
 
     py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
-    cmd = f'"{py}" -m pytest tests/ -v --tb=short --timeout=120'
-    rc, out, err = run_pytest(cmd, timeout=3600)
+    # -n 3: 最多 3 个 worker（文件级并行：test_contract / test_login / test_workbench 各占一个）
+    # --dist=loadscope: 每个测试文件独占一个 worker，减少 Playwright 浏览器进程的竞争与崩溃
+    cmd = f'"{py}" -m pytest tests/ -v --tb=short --timeout=120 -n 3 --dist=loadscope'
+    # pytest 超时设为 1800s（30分钟），必须 < cron 超时（2400s），让脚本自己的清理逻辑先触发
+    rc, out, err = run_pytest(cmd, timeout=1800)
 
     # print output to console
     print(out)
