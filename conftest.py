@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 conftest.py — pytest fixtures
 提供浏览器、页面等共享资源，支持所有测试用例。
@@ -5,19 +6,66 @@ conftest.py — pytest fixtures
 策略：
 - 登录测试（test_login）：function scope，每个用例独立 context + page，保证隔离
 - 工作台测试（test_workbench）：module scope 共享已登录 context，避免重复登录
+
+报告收集：支持 pytest-xdist 并行运行，使用文件锁合并各 worker 结果
 """
 import json
 import os
 import time
+import tempfile
 from datetime import datetime
 import pytest
 from playwright.sync_api import sync_playwright
 
-# ── 自定义报告钩子：收集结果写 JSON ──────────────────────────────
+# ── 自定义报告钩子：收集结果写 JSON（支持 xdist 并行）────────────────
 import time as _time
 
-_test_results = []        # list[dict]
+_test_results = []        # list[dict] - 当前 worker 的结果
 _session_start = None     # session 开始时间
+
+
+def _get_worker_id():
+    """获取 xdist worker ID，如果没有则返回 'master'"""
+    return os.environ.get("PYTEST_XDIST_WORKER", "master")
+
+
+def _get_result_file():
+    """获取当前 worker 的结果临时文件路径"""
+    worker_id = _get_worker_id()
+    report_dir = os.path.join(os.path.dirname(__file__), "reports")
+    os.makedirs(report_dir, exist_ok=True)
+    return os.path.join(report_dir, f"_test_results_{worker_id}.json")
+
+
+def _save_worker_results():
+    """保存当前 worker 的结果到临时文件"""
+    result_file = _get_result_file()
+    with open(result_file, "w", encoding="utf-8") as f:
+        json.dump(_test_results, f, ensure_ascii=False, indent=2)
+
+
+def _merge_all_worker_results():
+    """合并所有 worker 的结果文件"""
+    report_dir = os.path.join(os.path.dirname(__file__), "reports")
+    all_results = []
+    
+    # 查找所有 worker 结果文件
+    for fname in os.listdir(report_dir):
+        if fname.startswith("_test_results_") and fname.endswith(".json"):
+            fpath = os.path.join(report_dir, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    worker_results = json.load(f)
+                    all_results.extend(worker_results)
+            except Exception:
+                pass
+            # 删除临时文件
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
+    
+    return all_results
 
 
 def pytest_configure(config):
@@ -61,38 +109,54 @@ def pytest_runtest_logreport(report):
             "failure_msg": failure_msg[:500],
             "stdout":   "",
         })
+        
+        # 实时保存到临时文件（避免 worker 崩溃丢失数据）
+        _save_worker_results()
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """所有测试结束后，写 JSON 供报告生成脚本使用"""
+    """所有测试结束后，合并所有 worker 结果并写 JSON"""
     global _session_start
-    report_dir = os.path.join(os.path.dirname(__file__), "reports")
-    os.makedirs(report_dir, exist_ok=True)
+    
+    # 再次保存当前 worker 结果
+    _save_worker_results()
+    
+    # 只有 master 进程（或没有 xdist 时）合并所有结果
+    worker_id = _get_worker_id()
+    if worker_id == "master":
+        # 等待所有 worker 完成（简单等待）
+        _time.sleep(1)
+        
+        # 合并所有 worker 结果
+        all_results = _merge_all_worker_results()
+        
+        report_dir = os.path.join(os.path.dirname(__file__), "reports")
+        os.makedirs(report_dir, exist_ok=True)
 
-    # 汇总
-    passed  = sum(1 for r in _test_results if r["outcome"] == "passed")
-    failed  = sum(1 for r in _test_results if r["outcome"] == "failed")
-    skipped = sum(1 for r in _test_results if r["outcome"] == "skipped")
-    total   = len(_test_results)
-    duration = round(_time.time() - _session_start, 1) if _session_start else 0
+        # 汇总
+        passed  = sum(1 for r in all_results if r["outcome"] == "passed")
+        failed  = sum(1 for r in all_results if r["outcome"] == "failed")
+        skipped = sum(1 for r in all_results if r["outcome"] == "skipped")
+        total   = len(all_results)
+        duration = round(_time.time() - _session_start, 1) if _session_start else 0
 
-    data = {
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "platform":     "Windows (Playwright)",
-        "total":        total,
-        "passed":       passed,
-        "failed":       failed,
-        "skipped":      skipped,
-        "pass_rate":    f"{round(passed/total*100, 1) if total else 0}%",
-        "duration_s":   duration,
-        "exitstatus":   exitstatus,
-        "tests":        _test_results,
-    }
+        data = {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "platform":     "Windows (Playwright)",
+            "total":        total,
+            "passed":       passed,
+            "failed":       failed,
+            "skipped":      skipped,
+            "pass_rate":    f"{round(passed/total*100, 1) if total else 0}%",
+            "duration_s":   duration,
+            "exitstatus":   exitstatus,
+            "tests":        all_results,
+        }
 
-    out_path = os.path.join(report_dir, "report_data.json")
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"\n[Report] JSON written: {out_path}")
+        out_path = os.path.join(report_dir, "report_data.json")
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"\n[Report] JSON written: {out_path} ({total} tests)")
 
 
 def _should_run_headless():
@@ -140,7 +204,7 @@ def browser():
     # 浏览器资源（chromium 进程）会在进程退出时被 OS 回收
 
 
-# ── 登录测试用（function scope，隔离 cookie） ──────────────────────
+# ── 登录测试用（function scope，隔离 cookie）─────────────────────
 
 @pytest.fixture(scope="function")
 def context(browser):
@@ -184,7 +248,7 @@ def _do_login(lp):
     return lp
 
 
-# ── 工作台测试用（module scope，共享已登录 context） ──────────────────────
+# ── 工作台测试用（module scope，共享已登录 context）─────────────────────
 
 @pytest.fixture(scope="module")
 def logged_in_context(browser):
@@ -234,7 +298,7 @@ def workbench_page(logged_in_context):
     # 不调用 page.close()，同上
 
 
-# ── 合同管理测试用（module scope） ──────────────────────────────
+# ── 合同管理测试用（module scope）─────────────────────────────
 
 @pytest.fixture(scope="function")
 def contract_page(logged_in_context):

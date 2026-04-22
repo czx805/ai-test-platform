@@ -263,9 +263,9 @@ def do_sync():
         except Exception:
             pass
 
-    # commit message
-    if failed == 0 and total > 0:
-        msg = f"auto-sync: {passed}/{total} pass @ {now:%Y-%m-%d %H:%M}"
+    # commit message - 包含测试结果（无论是否有失败）
+    if total > 0:
+        msg = f"auto-sync: {passed}/{total} pass, {failed} fail @ {now:%Y-%m-%d %H:%M}"
     else:
         msg = f"auto-sync @ {now:%Y-%m-%d %H:%M}"
 
@@ -317,8 +317,8 @@ def main():
         status_emoji = "✅"
         status_text = "全部通过"
     elif failed > 0:
-        status_emoji = "❌"
-        status_text = f"{failed} 个失败"
+        status_emoji = "⚠️"
+        status_text = f"{failed} 个失败，仍推送代码"
     else:
         status_emoji = "⚠️"
         status_text = "无测试用例"
@@ -356,25 +356,17 @@ def main():
         send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
         return
 
-    if failed > 0:
-        log(f"FAIL: {failed} case(s) failed, skip push")
+    # 无论测试是否失败，都执行 git push（只要测试跑完了）
+    log("Sync now (push regardless of test results) ...")
+    ok = do_sync()
+    sha = git_last_sha()
+    if ok:
+        log("DONE")
+        dingtalk_text += f"\n- **Git Push**: 成功 (commit `{sha}`)\n"
         send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
-        return
-
-    if passed > 0 and failed == 0:
-        log("PASS: all green, sync now ...")
-        ok = do_sync()
-        sha = git_last_sha()
-        if ok:
-            log("DONE")
-            dingtalk_text += f"\n- **Git Push**: 成功 (commit `{sha}`)\n"
-            send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
-        else:
-            log("SYNC FAILED")
-            dingtalk_text += f"\n- **Git Push**: 失败\n"
-            send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
     else:
-        log(f"UNKNOWN state passed={passed} failed={failed}")
+        log("SYNC FAILED")
+        dingtalk_text += f"\n- **Git Push**: 失败\n"
         send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
 
 
