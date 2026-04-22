@@ -78,7 +78,11 @@ def pytest_sessionstart(session):
 
 
 def pytest_runtest_logreport(report):
-    """收集每个测试用例的运行时信息"""
+    """收集每个测试用例的运行时信息（只在 worker 进程中记录，避免 xdist 重复）"""
+    worker_id = _get_worker_id()
+    # xdist 使用时，master 进程也会收到 hook，跳过它（只在 worker 中记录）
+    if worker_id == "master" and "PYTEST_XDIST_WORKER_COUNT" in os.environ:
+        return
     if report.when == "call":
         # 截图路径（每个用例的截图放在 logs/ 下）
         test_name = report.nodeid.replace("::", "_").replace("/", "_").replace("\\", "_")
