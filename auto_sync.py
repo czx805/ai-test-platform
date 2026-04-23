@@ -1,25 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-auto_sync.py -- test pass + auto git push to GitHub
+auto_sync.py -- AI测试平台自动同步脚本
 
-Usage:
-    python auto_sync.py            # run tests, push if all pass
-    python auto_sync.py --dry-run  # show git status only, no test/push
+功能：
+  1. 运行 pytest 测试
+  2. 成功后推送到 GitHub
+  3. 所有情况（成功/失败/超时）都发钉钉通知
 """
-import subprocess
-import sys
-import os
-import json
-import re
-import datetime
-import hmac
-import hashlib
-import base64
-import urllib.parse
-import urllib.request
-import time
+import subprocess, sys, os, json, re, datetime, hmac, hashlib, base64, urllib.parse, urllib.request, time, threading
 
-# Fix Windows GBK stdout encoding
+# Fix Windows GBK stdout
 if sys.stdout.encoding != "utf-8":
     sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
 if sys.stderr.encoding != "utf-8":
@@ -30,9 +20,8 @@ VENV_PY      = os.path.join(REPO_DIR, "venvs", "Scripts", "python.exe")
 REPORTS_JSON = os.path.join(REPO_DIR, "reports", "report_data.json")
 LOG_FILE     = os.path.join(REPO_DIR, "reports", "sync.log")
 
-# DingTalk webhook config
-DINGTALK_ACCESS_TOKEN = "62bc5ff38f7b6a10421c698a27a3ee0f5623feeb85f8c200c3bead3e56e2450a"
-DINGTALK_SECRET       = "SEC004404742933dbe064b38b315ee25084ccede761f6a4e847e61e15d60ae5dc68"
+DINGTALK_TOKEN = "62bc5ff38f7b6a10421c698a27a3ee0f5623feeb85f8c200c3bead3e56e2450a"
+DINGTALK_SECRET = "SEC004404742933dbe064b38b315ee25084ccede761f6a4e847e61e15d60ae5dc68"
 
 
 def log(msg):
@@ -46,49 +35,63 @@ def log(msg):
         pass
 
 
-def run(cmd, cwd=None, capture=True, timeout=None):
-    kwargs = {"cwd": cwd or REPO_DIR, "shell": True}
-    if capture:
-        kwargs["stdout"] = subprocess.PIPE
-        kwargs["stderr"] = subprocess.PIPE
+def run(cmd, cwd=None, timeout=None):
+    kwargs = {"cwd": cwd or REPO_DIR, "shell": True, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
     if timeout:
         kwargs["timeout"] = timeout
     try:
         r = subprocess.run(cmd, **kwargs)
+        return r.returncode, (r.stdout or b"").decode("utf-8", errors="replace"), (r.stderr or b"").decode("utf-8", errors="replace")
     except subprocess.TimeoutExpired as e:
-        log(f"TIMEOUT: process killed after {timeout}s")
         out = (e.stdout or b"").decode("utf-8", errors="replace")
         err = (e.stderr or b"").decode("utf-8", errors="replace")
         return -1, out, err
-    return r.returncode, (r.stdout or b"").decode("utf-8", errors="replace"), (r.stderr or b"").decode("utf-8", errors="replace")
 
 
-def run_pytest(cmd, timeout=600):
+def parse_pytest_output(out):
+    """从 pytest -v 输出中解析 passed/failed/total"""
+    passed = failed = total = 0
+    # pytest -v 格式: test_file.py::test_name PASSED  或  FAILED
+    passed_lines = [l for l in out.splitlines() if " PASSED" in l or " passed" in l]
+    failed_lines = [l for l in out.splitlines() if " FAILED" in l or " failed" in l]
+    # 尝试摘要行
+    summary_match = re.search(r"(\d+) passed", out)
+    if summary_match:
+        passed = int(summary_match.group(1))
+    summary_match2 = re.search(r"(\d+) failed", out)
+    if summary_match2:
+        failed = int(summary_match2.group(1))
+    total = passed + failed
+    # 也看 collected 行
+    if total == 0:
+        m = re.search(r"(\d+) selected", out)
+        if m:
+            total = int(m.group(1))
+    return passed, failed, total
+
+
+def run_pytest(timeout=1200):
     """
-    运行 pytest 并在超时后强制杀进程树。
-    使用 Popen + 外部计时器，避免 Playwright teardown 无限卡死导致 subprocess.run() 永久阻塞。
+    运行 pytest，支持硬超时（超时后强制 kill 并发通知）
+    返回: (rc, out, killed_flag)
     """
-    import threading, time, signal
+    log(f"[run_pytest] timeout={timeout}s")
 
+    py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
+    cmd = f'"{py}" -m pytest tests/ -v --tb=short --timeout=120 -n 3 --dist=loadscope'
     log(f"[run_pytest] cmd: {cmd}")
-    log(f"[run_pytest] timeout: {timeout}s")
 
     proc = subprocess.Popen(
-        cmd,
-        cwd=REPO_DIR,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        bufsize=1,
+        cmd, cwd=REPO_DIR, shell=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", bufsize=1,
     )
 
     lines = []
-    timer_active = [True]   # 用 list 方便在嵌套函数中修改
     killed = [False]
+    timer_active = [True]
 
-    def _read_stdout():
+    def _read():
         try:
             for line in iter(proc.stdout.readline, ""):
                 if line:
@@ -101,43 +104,46 @@ def run_pytest(cmd, timeout=600):
         time.sleep(timeout)
         if timer_active[0] and proc.poll() is None:
             killed[0] = True
-            log(f"[run_pytest] HARD TIMEOUT after {timeout}s — killing process tree")
+            log(f"[run_pytest] TIMEOUT after {timeout}s -- killing process")
             try:
-                if os.name == "nt":
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10,
-                    )
-                else:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
             except Exception as e:
                 log(f"[run_pytest] kill error: {e}")
 
-    reader = threading.Thread(target=_read_stdout, daemon=True)
-    killer = threading.Thread(target=_kill_after_timeout, daemon=True)
-    reader.start()
-    killer.start()
+    threading.Thread(target=_read, daemon=True).start()
+    threading.Thread(target=_kill_after_timeout, daemon=True).start()
 
     proc.wait()
     timer_active[0] = False
-    reader.join(timeout=5)
-    killer.join(timeout=1)
-
     out = "".join(lines)
-    rc = proc.returncode
 
-    if killed[0]:
-        log(f"[run_pytest] Killed by timeout (rc={rc})")
-        return -1, out, ""
-    else:
-        log(f"[run_pytest] Exit code: {rc}")
-        return rc, out, ""
+    log(f"[run_pytest] rc={proc.returncode}, killed={killed[0]}")
+    return proc.returncode, out, killed[0]
 
 
-def git_status():
-    rc, out, _ = run("git status --porcelain")
-    lines = [l for l in out.strip().splitlines() if l.strip()]
-    return bool(lines), lines
+def send_dingtalk(title, text):
+    try:
+        ts = str(int(time.time() * 1000))
+        sign_str = f"{ts}\n{DINGTALK_SECRET}"
+        sign = urllib.parse.quote_plus(base64.b64encode(
+            hmac.new(DINGTALK_SECRET.encode(), sign_str.encode(), hashlib.sha256).digest()
+        ))
+        url = f"https://oapi.dingtalk.com/robot/send?access_token={DINGTALK_TOKEN}&timestamp={ts}&sign={sign}"
+        data = json.dumps({
+            "msgtype": "markdown",
+            "markdown": {"title": title, "text": text},
+            "at": {"isAtAll": False},
+        }).encode()
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        resp = urllib.request.urlopen(req, timeout=10)
+        result = json.loads(resp.read().decode())
+        ok = result.get("errcode") == 0
+        log(f"DingTalk: {'OK' if ok else 'FAILED'} - {result}")
+        return ok
+    except Exception as e:
+        log(f"DingTalk error: {e}")
+        return False
 
 
 def git_has_remote():
@@ -145,229 +151,196 @@ def git_has_remote():
     return "origin" in out
 
 
+def git_status_lines():
+    rc, out, _ = run("git status --porcelain")
+    return [l for l in out.strip().splitlines() if l.strip()]
+
+
 def git_last_sha():
     rc, out, _ = run("git rev-parse --short HEAD")
     return out.strip()
 
 
-def send_dingtalk(title, text, at_all=False):
-    """Send markdown message to DingTalk group robot."""
-    try:
-        timestamp = str(round(time.time() * 1000))
-        string_to_sign = f"{timestamp}\n{DINGTALK_SECRET}"
-        hmac_code = hmac.new(
-            DINGTALK_SECRET.encode("utf-8"),
-            string_to_sign.encode("utf-8"),
-            digestmod=hashlib.sha256,
-        ).digest()
-        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
-        url = (
-            f"https://oapi.dingtalk.com/robot/send"
-            f"?access_token={DINGTALK_ACCESS_TOKEN}"
-            f"&timestamp={timestamp}&sign={sign}"
-        )
-        data = {
-            "msgtype": "markdown",
-            "markdown": {"title": title, "text": text},
-            "at": {"isAtAll": at_all},
-        }
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(data).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        resp = urllib.request.urlopen(req, timeout=10)
-        result = json.loads(resp.read().decode("utf-8"))
-        if result.get("errcode") == 0:
-            log("DingTalk: message sent OK")
-        else:
-            log(f"DingTalk: send failed - {result}")
-        return result
-    except Exception as e:
-        log(f"DingTalk: send error - {e}")
-        return None
-
-
-def run_tests():
-    # clean old report
-    if os.path.exists(REPORTS_JSON):
-        os.remove(REPORTS_JSON)
-
-    log("=" * 60)
-    log("RUN pytest ...")
-    log("=" * 60)
-
-    py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
-    # -n 3: 最多 3 个 worker（文件级并行：test_contract / test_login / test_workbench 各占一个）
-    # --dist=loadscope: 每个测试文件独占一个 worker，减少 Playwright 浏览器进程的竞争与崩溃
-    cmd = f'"{py}" -m pytest tests/ -v --tb=short --timeout=120 -n 3 --dist=loadscope'
-    # pytest 超时设为 1800s（30分钟），必须 < cron 超时（2400s），让脚本自己的清理逻辑先触发
-    rc, out, err = run_pytest(cmd, timeout=1800)
-
-    # print output to console
-    print(out)
-    if err.strip():
-        print(err)
-
-    log(f"pytest exit code = {rc}")
-
-    passed = failed = total = 0
-    if os.path.exists(REPORTS_JSON):
-        try:
-            with open(REPORTS_JSON, encoding="utf-8") as f:
-                data = json.load(f)
-            passed = data.get("passed", 0)
-            failed = data.get("failed", 0)
-            total  = data.get("total",  0)
-            log(f"report: {passed} pass / {failed} fail / {total} total")
-        except Exception as e:
-            log(f"report parse error: {e}")
-
-    return passed, failed, total
-
-
-def do_sync():
-    now = datetime.datetime.now()
-
-    if not git_has_remote():
-        log("WARN: no remote origin, skip push")
-        return False
-
-    # git add
-    rc, _, err = run("git add -A")
-    if rc != 0:
-        log(f"ERROR: git add failed: {err}")
-        return False
-
-    dirty, lines = git_status()
-    if not dirty:
-        log("CLEAN: nothing to commit")
-        return True
-
-    # list changed files
-    changed = sorted(set(
-        re.sub(r"^[ A-Z?]+", "", l).strip()
-        for l in lines
-        if re.sub(r"^[ A-Z?]+", "", l).strip()
-    ))
-    log(f"Changed files ({len(changed)}): " + ", ".join(changed))
-
-    passed = failed = total = 0
-    if os.path.exists(REPORTS_JSON):
-        try:
-            with open(REPORTS_JSON, encoding="utf-8") as f:
-                data = json.load(f)
-            passed = data.get("passed", 0)
-            failed = data.get("failed", 0)
-            total  = data.get("total",  0)
-        except Exception:
-            pass
-
-    # commit message - 包含测试结果（无论是否有失败）
-    if total > 0:
-        msg = f"auto-sync: {passed}/{total} pass, {failed} fail @ {now:%Y-%m-%d %H:%M}"
-    else:
-        msg = f"auto-sync @ {now:%Y-%m-%d %H:%M}"
-
-    log(f"COMMIT: {msg}")
-    # 用双引号包裹 commit message，内部双引号转义
+def git_add_and_commit(msg):
+    run("git add -A")
     safe_msg = msg.replace('"', '\\"')
     rc, _, err = run(f'git commit -m "{safe_msg}"')
     if rc != 0:
-        log(f"ERROR: git commit failed: {err}")
+        log(f"git commit failed: {err}")
         return False
-
-    log("PUSH to GitHub ...")
-    rc, out, err = run("git push")
-    if rc != 0:
-        log(f"ERROR: git push failed: {err}")
-        return False
-
-    sha = git_last_sha()
-    log(f"OK: pushed commit {sha}")
     return True
+
+
+def git_push(retry=1):
+    for i in range(retry + 1):
+        rc, out, err = run("git push")
+        if rc == 0:
+            return True
+        log(f"git push failed (attempt {i+1}): {err}")
+        if i < retry:
+            time.sleep(5)
+    return False
+
+
+def build_fail_detail(out, max_cases=5, max_msg_len=200):
+    """从 pytest 输出中提取失败用例详情"""
+    blocks = []
+    # 找每个 FAILED 块
+    for chunk in re.split(r"(?=FAILED\s)", out):
+        if not chunk.strip():
+            continue
+        lines = chunk.splitlines()
+        if not lines:
+            continue
+        # 第一行是 test id
+        title_line = lines[0].strip()
+        # 提取 assertion message
+        msg_lines = []
+        for ln in lines[1:]:
+            if re.match(r"(FAILED|PASSED|SHORT|ERROR|___)", ln):
+                break
+            ln = ln.strip()
+            if ln and not ln.startswith("="):
+                msg_lines.append(ln)
+        msg = " ".join(msg_lines).strip()
+        if len(msg) > max_msg_len:
+            msg = msg[:max_msg_len] + "..."
+        blocks.append((title_line, msg))
+    return blocks[:max_cases]
+
+
+def send_report(passed, failed, total, out, killed=False, extra_msg=""):
+    """发送钉钉报告"""
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    if killed:
+        status_emoji = "⏱"
+        status_text = "pytest 超时终止"
+        # 取最后 30 行作为失败上下文
+        last_lines = out.splitlines()[-30:]
+        # 找最后一个 "正在运行" 的测试
+        running_test = ""
+        for ln in reversed(last_lines):
+            m = re.search(r"(tests?[/\\][\w_]+\.py::[\w_]+)", ln)
+            if m:
+                running_test = m.group(1)
+                break
+        footer = f"\n\n> **超时原因**: pytest 运行超过 20 分钟未完成"
+        if running_test:
+            footer += f"\n> **最后运行**: `{running_test}` 疑似卡住"
+        footer += f"\n\n```\n" + "\n".join(last_lines) + "\n```"
+    elif failed > 0:
+        status_emoji = "❌"
+        status_text = f"{failed} 个失败"
+        fail_cases = build_fail_detail(out)
+        footer = "\n\n---\n\n### 失败用例\n\n"
+        for i, (title, msg) in enumerate(fail_cases, 1):
+            footer += f"**{i}. {title}**\n\n"
+            if msg:
+                footer += f"> {msg}\n\n"
+        footer += f"\n> 完整日志：`reports/sync.log`"
+    elif total == 0:
+        status_emoji = "⚠️"
+        status_text = "无测试用例"
+        footer = f"\n> pytest 未收集到任何测试用例"
+    else:
+        status_emoji = "✅"
+        status_text = "全部通过"
+        footer = ""
+
+    text = (
+        f"## {status_emoji} AI测试平台 - 自动测试报告\n\n"
+        f"- **时间**: {now_str}\n"
+        f"- **状态**: {status_text}\n"
+        f"- **通过**: {passed} / **失败**: {failed} / **总计**: {total}\n"
+        f"- **触发**: 自动定时任务\n"
+    )
+    if extra_msg:
+        text += f"\n{extra_msg}"
+    text += footer
+
+    send_dingtalk(f"AI测试平台 - {status_text}", text)
 
 
 def main():
     dry_run = "--dry-run" in sys.argv
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
     print(f"[{'DRY RUN' if dry_run else 'LIVE'}] auto_sync.py  |  {now_str}")
-    print(f"Repo: {REPO_DIR}")
-
-    # git status check
-    dirty, lines = git_status()
-    if dirty:
-        print(f"GIT: {len(lines)} change(s) detected")
-        for l in lines:
-            print(f"  {l}")
-    else:
-        print("GIT: clean (no changes)")
 
     if dry_run:
-        print("DRY RUN: exit, no test, no push")
+        lines = git_status_lines()
+        print(f"GIT: {'dirty (' + str(len(lines)) + ' changes)' if lines else 'clean'}")
         return
 
-    # run tests
-    passed, failed, total = run_tests()
+    # clean old report
+    if os.path.exists(REPORTS_JSON):
+        os.remove(REPORTS_JSON)
+
+    log("=" * 60)
+    log("START pytest")
+    log("=" * 60)
+
+    # 运行 pytest（20分钟超时）
+    rc, out, killed = run_pytest(timeout=1200)
+    log(f"pytest done: rc={rc}, killed={killed}")
+
+    # 解析结果
+    passed, failed, total = parse_pytest_output(out)
+
+    # 保存输出到 log
+    log_path = os.path.join(REPO_DIR, "reports", "pytest_output.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(out)
+
+    # 超时情况：立即发通知（不走 git push）
+    if killed:
+        log("RESULT: TIMEOUT -- sending notification immediately")
+        send_report(passed, failed, total, out, killed=True)
+        return
+
+    # 打印结果
     print(f"RESULT: {passed} pass / {failed} fail / {total} total")
 
-    # build DingTalk notification
-    if failed == 0 and total > 0:
-        status_emoji = "✅"
-        status_text = "全部通过"
-    elif failed > 0:
-        status_emoji = "⚠️"
-        status_text = f"{failed} 个失败，仍推送代码"
-    else:
-        status_emoji = "⚠️"
-        status_text = "无测试用例"
-
-    dingtalk_text = (
-        f"## {status_emoji} AI测试平台 - 自动测试报告\n\n"
-        f"- **时间**: {now_str}\n"
-        f"- **结果**: {status_text}\n"
-        f"- **通过**: {passed} / **失败**: {failed} / **总计**: {total}\n"
-    )
-
-    # 失败用例详情
-    if failed > 0 and os.path.exists(REPORTS_JSON):
-        try:
-            with open(REPORTS_JSON, encoding="utf-8") as f:
-                report = json.load(f)
-            fail_cases = [t for t in report.get("tests", []) if t.get("outcome") == "failed"]
-            if fail_cases:
-                dingtalk_text += "\n---\n\n### ❌ 失败用例详情\n\n"
-                for i, t in enumerate(fail_cases, 1):
-                    name = t.get("title") or t.get("nodeid", "unknown")
-                    dur = t.get("duration", 0)
-                    msg = t.get("failure_msg", "").strip()
-                    # 截断过长的错误信息（钉钉 markdown 限制）
-                    if len(msg) > 300:
-                        msg = msg[:300] + "…"
-                    dingtalk_text += f"**{i}. {name}** ({dur:.1f}s)\n\n"
-                    if msg:
-                        dingtalk_text += f"> {msg}\n\n"
-        except Exception as e:
-            log(f"report parse error (fail detail): {e}")
-
-    if total == 0:
-        log("WARN: no test collected, skip sync")
-        send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
+    # 失败情况：发通知，不 push
+    if failed > 0:
+        log(f"RESULT: {failed} failures -- notify and skip push")
+        send_report(passed, failed, total, out)
         return
 
-    # 无论测试是否失败，都执行 git push（只要测试跑完了）
-    log("Sync now (push regardless of test results) ...")
-    ok = do_sync()
+    # 无测试用例
+    if total == 0:
+        log("RESULT: no tests collected")
+        send_report(passed, failed, total, out)
+        return
+
+    # 全部通过：push
+    if not git_has_remote():
+        log("WARN: no remote -- notify but skip push")
+        send_report(passed, failed, total, out, extra_msg="> **注意**: 仓库无 remote，不推送")
+        return
+
+    dirty = git_status_lines()
+    if not dirty:
+        log("CLEAN: nothing to commit -- notify")
+        send_report(passed, failed, total, out, extra_msg="> **Git**: 无代码变更")
+        return
+
+    # 有变更 → commit + push
+    now = datetime.datetime.now()
+    msg = f"auto-sync: {passed}/{total} pass @ {now:%Y-%m-%d %H:%M}"
+    if not git_add_and_commit(msg):
+        send_report(passed, failed, total, out, extra_msg="> **Git**: commit 失败")
+        return
+
     sha = git_last_sha()
+    ok = git_push(retry=1)
     if ok:
-        log("DONE")
-        dingtalk_text += f"\n- **Git Push**: 成功 (commit `{sha}`)\n"
-        send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
+        send_report(passed, failed, total, out,
+                    extra_msg=f"> **Git Push**: 成功 (`{sha}`)")
     else:
-        log("SYNC FAILED")
-        dingtalk_text += f"\n- **Git Push**: 失败\n"
-        send_dingtalk("AI测试平台 - 测试报告", dingtalk_text)
+        send_report(passed, failed, total, out,
+                    extra_msg=f"> **Git Push**: 失败（commit 已保存本地）")
 
 
 if __name__ == "__main__":
