@@ -51,17 +51,23 @@ def run(cmd, cwd=None, timeout=None):
 def parse_pytest_output(out):
     """从 pytest -v 输出中解析 passed/failed/total"""
     passed = failed = total = 0
-    # pytest -v 格式: test_file.py::test_name PASSED  或  FAILED
-    passed_lines = [l for l in out.splitlines() if " PASSED" in l or " passed" in l]
-    failed_lines = [l for l in out.splitlines() if " FAILED" in l or " failed" in l]
-    # 尝试摘要行
-    summary_match = re.search(r"(\d+) passed", out)
-    if summary_match:
-        passed = int(summary_match.group(1))
-    summary_match2 = re.search(r"(\d+) failed", out)
-    if summary_match2:
-        failed = int(summary_match2.group(1))
+    # 统计每一行的 PASSED/FAILED 标记
+    for line in out.splitlines():
+        # 匹配 [gwX] [ YY%] PASSED tests/... 或 [gwX] [ YY%] FAILED tests/...
+        if re.search(r"\[gw\d+\]\s*\[\s*\d+%\]\s*PASSED", line):
+            passed += 1
+        elif re.search(r"\[gw\d+\]\s*\[\s*\d+%\]\s*FAILED", line):
+            failed += 1
     total = passed + failed
+    # 如果上面没匹配到，尝试摘要行
+    if total == 0:
+        summary_match = re.search(r"(\d+) passed", out)
+        if summary_match:
+            passed = int(summary_match.group(1))
+        summary_match2 = re.search(r"(\d+) failed", out)
+        if summary_match2:
+            failed = int(summary_match2.group(1))
+        total = passed + failed
     # 也看 collected 行
     if total == 0:
         m = re.search(r"(\d+) selected", out)
