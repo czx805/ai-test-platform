@@ -9,6 +9,7 @@ conftest.py — pytest fixtures
 
 报告收集：支持 pytest-xdist 并行运行，使用文件锁合并各 worker 结果
 """
+import atexit
 import json
 import os
 import time
@@ -22,6 +23,54 @@ import time as _time
 
 _test_results = []        # list[dict] - 当前 worker 的结果
 _session_start = None     # session 开始时间
+
+# ── atexit 延迟清理：解决 Playwright teardown hang ──────────────
+#
+# 问题根因：fixture teardown 里直接调用 page.close() / ctx.close() /
+# browser.close()，在 pytest-timeout 超时或 SIGKILL 时，C 扩展线程
+# 的 close() 调用无法被中断，导致后续所有测试的 Playwright 操作卡死。
+#
+# 解决方案：teardown 时只记录对象引用，在进程退出时才关闭（atexit）。
+# Python atexit handler 在 SIGTERM/SIGINT 之后执行，不受 pytest 超时影响，
+# 且只在进程真正退出前运行一次，彻底避免 teardown hang。
+
+_teardown_scheduled = False
+
+
+def _schedule_teardown():
+    global _teardown_scheduled
+    if _teardown_scheduled:
+        return
+    _teardown_scheduled = True
+
+    def _cleanup_all():
+        # 逆序清理：pages → contexts → browser
+        # 注意：browser.close() 会自动关闭所有子 context，
+        # 所以清理顺序不影响最终结果，这里只是做兜底。
+        while _playwright_pages:
+            p = _playwright_pages.pop()
+            try:
+                p.close()
+            except Exception:
+                pass
+        while _playwright_contexts:
+            c = _playwright_contexts.pop()
+            try:
+                c.close()
+            except Exception:
+                pass
+        if _playwright_instance:
+            try:
+                _playwright_instance.stop()
+            except Exception:
+                pass
+
+    atexit.register(_cleanup_all)
+
+
+_playwright_instance = None
+_playwright_pages     = []
+_playwright_contexts = []
 
 
 def _get_worker_id():

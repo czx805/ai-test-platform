@@ -81,25 +81,39 @@ def test_contract_pagination_exists(contract_page):
 # ══════════════════════════════════════════════════════════════
 
 def test_contract_search_by_contract_no(contract_page):
-    """按合同编号精确搜索应返回对应结果"""
+    """按合同编号精确搜索应返回对应结果（自适应：自动读取表格中真实存在的编号）"""
     cp = contract_page
-    cp.expand_filters()
-    cp.fill_search("合同编号", "20260407-001")
-    cp.click_query()
+    # 先从表格读取第一行真实存在的合同编号，不依赖硬编码数据
     rows = cp.get_all_rows_data()
+    assert len(rows) >= 1, "合同列表为空，无法测试搜索"
+    real_contract_no = rows[0].get("合同编号", "")
+    assert real_contract_no, "第一行合同编号为空，无法进行搜索测试"
+
+    cp.expand_filters()
+    cp.fill_search("合同编号", real_contract_no)
+    cp.click_query()
+    result_rows = cp.get_all_rows_data()
     cp.screenshot("logs/contract_search_result.png")
-    assert len(rows) >= 1, "搜索结果为空"
-    assert any("20260407-001" in r.get("合同编号", "") for r in rows), \
-        f"搜索结果不匹配，rows={rows}"
-    print(f"[PASS] 按合同编号搜索返回 {len(rows)} 条结果")
+
+    assert len(result_rows) >= 1, f"搜索 {real_contract_no} 结果为空"
+    assert any(real_contract_no in r.get("合同编号", "") for r in result_rows), \
+        f"搜索结果不匹配，期望={real_contract_no}，rows={result_rows}"
+    print(f"[PASS] 按合同编号 {real_contract_no} 搜索返回 {len(result_rows)} 条结果")
 
 
 def test_contract_search_reset(contract_page):
-    """重置按钮应清空搜索条件"""
+    """重置按钮应清空搜索条件（自适应：读取表格中真实存在的编号）"""
     cp = contract_page
     rows_before = len(cp.get_all_rows_data())
+    assert rows_before >= 1, "合同列表为空，无法测试搜索"
+
+    # 读取第一行合同编号用于搜索
+    rows = cp.get_all_rows_data()
+    real_contract_no = rows[0].get("合同编号", "")
+    assert real_contract_no, "第一行合同编号为空"
+
     cp.expand_filters()
-    cp.fill_search("合同编号", "20260407-001")
+    cp.fill_search("合同编号", real_contract_no)
     cp.click_reset()
     rows_after = len(cp.get_all_rows_data())
     cp.screenshot("logs/contract_reset.png")
