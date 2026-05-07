@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自动化测试平台</title>
+<style>
+/* =========================================
+   设计令牌系统
+   ========================================= */
+:root {
+  --color-primary:       #4F6EF7;
+  --color-primary-light: #EEF1FF;
+  --color-primary-dark:  #3654D6;
+  --color-success:       #10B981;
+  --color-success-light: #D1FAE5;
+  --color-warning:       #F59E0B;
+  --color-warning-light: #FEF3C7;
+  --color-danger:        #EF4444;
+  --color-danger-light:  #FEE2E2;
+  --color-info:          #6366F1;
+  --color-info-light:    #EEF2FF;
+  --color-running:       #3B82F6;
+  --color-running-light: #DBEAFE;
+
+  --bg:         #F4F6FB;
+  --surface:    #FFFFFF;
+  --surface-2:  #F9FAFB;
+  --border:     #E5E7EB;
+  --border-2:   #D1D5DB;
+
+  --text-primary:   #111827;
+  --text-secondary: #6B7280;
+  --text-tertiary:  #9CA3AF;
+
+  --sidebar-bg:   #1C2136;
+  --sidebar-text: #CBD5E1;
+  --sidebar-active-bg: #4F6EF7;
+  --sidebar-hover-bg: rgba(255,255,255,0.06);
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.12);
+  --shadow-float: 0 8px 24px rgba(79,110,247,0.2);
+
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --font: 'PingFang SC','Segoe UI',system-ui,sans-serif;
+  --mono: 'JetBrains Mono','Fira Code',monospace;
+
+  --transition: 200ms cubic-bezier(0.4,0,0.2,1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* =========================================
+   侧边栏
+   ========================================= */
+.sidebar {
+  width: 220px;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.logo-icon {
+  width: 34px; height: 34px;
+  background: linear-gradient(135deg, var(--color-primary), #818CF8);
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(79,110,247,0.35);
+}
+
+.logo-text { color: #F1F5F9; font-weight: 700; font-size: 15px; line-height: 1.2; }
+.logo-sub  { color: var(--sidebar-text); font-size: 11px; opacity: 0.7; }
+
+.sidebar-section { padding: 14px 12px 4px; }
+.sidebar-section-label {
+  color: #475569; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 0 6px; margin-bottom: 4px;
+}
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--sidebar-text);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all var(--transition);
+  margin-bottom: 2px;
+  position: relative;
+  text-decoration: none;
+}
+.nav-item:hover { background: var(--sidebar-hover-bg); color: #E2E8F0; }
+.nav-item.active { background: var(--sidebar-active-bg); color: #fff; box-shadow: 0 2px 8px rgba(79,110,247,0.4); }
+
+.nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-badge {
+  margin-left: auto;
+  background: rgba(239,68,68,0.9);
+  color: #fff;
+  font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 20px;
+  min-width: 18px; text-align: center;
+}
+.nav-badge.green { background: rgba(16,185,129,0.85); }
+.nav-badge.blue  { background: rgba(79,110,247,0.85); }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.user-info {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.user-info:hover { background: var(--sidebar-hover-bg); }
+.avatar {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg,#818CF8,#C084FC);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 12px;
+  flex-shrink: 0;
+}
+.user-name  { color: #E2E8F0; font-size: 13px; font-weight: 500; }
+.user-role  { color: #64748B; font-size: 11px; }
+
+/* =========================================
+   主内容区
+   ========================================= */
+.main {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; min-width: 0;
+}
+
+/* 顶栏 */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  display: flex; align-items: center; gap: 16px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.topbar-title { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+.topbar-desc  { font-size: 13px; color: var(--text-secondary); margin-left: 6px; }
+
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px; font-weight: 500;
+  cursor: pointer; border: none;
+  transition: all var(--transition);
+  white-space: nowrap;
+  font-family: var(--font);
+}
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(79,110,247,0.28);
+}
+.btn-primary:hover { background: var(--color-primary-dark); box-shadow: var(--shadow-float); }
+
+.btn-secondary {
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border-2);
+}
+.btn-secondary:hover { background: var(--surface-2); border-color: var(--color-primary); color: var(--color-primary); }
+
+.btn-ghost { background: transparent; color: var(--text-secondary); }
+.btn-ghost:hover { background: var(--surface-2); color: var(--text-primary); }
+
+.btn-danger { background: var(--color-danger); color: #fff; }
+.btn-danger:hover { background: #DC2626; }
+
+.btn-success { background: var(--color-success); color: #fff; }
+.btn-success:hover { background: #059669; }
+
+.btn-sm { padding: 5px 12px; font-size: 12.5px; }
+.btn-xs { padding: 3px 9px; font-size: 12px; }
+.btn-icon { width: 34px; height: 34px; padding: 0; }
+
+/* =========================================
+   内容主体
+   ========================================= */
+.content {
+  flex: 1; display: flex; overflow: hidden; min-height: 0;
+}
+
+/* 左侧分类面板 */
+.category-panel {
+  width: 240px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-header-title {
+  font-weight: 600; font-size: 13.5px; color: var(--text-primary);
+  display: flex; align-items: center; gap: 6px;
+}
+
+.category-search {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.search-box {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 6px 10px;
+  transition: border-color var(--transition);
+}
+.search-box:focus-within { border-color: var(--color-primary); background: var(--surface); }
+.search-box input {
+  border: none; background: transparent; outline: none;
+  font-family: var(--font); font-size: 13px; color: var(--text-primary);
+  flex: 1; min-width: 0;
+}
+.search-box input::placeholder { color: var(--text-tertiary); }
+.search-icon { color: var(--text-tertiary); font-size: 13px; }
+
+.category-list { flex: 1; overflow-y: auto; padding: 8px; }
+.category-list::-webkit-scrollbar { width: 4px; }
+.category-list::-webkit-scrollbar-track { background: transparent; }
+.category-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+
+.category-item {
+  padding: 9px 12px; border-radius: var(--radius-sm);
+  cursor: pointer; display: flex; align-items: center;
+  gap: 8px; transition: all var(--transition);
+  margin-bottom: 2px;
+}
+.category-item:hover { background: var(--surface-2); }
+.category-item.active { background: var(--color-primary-light); }
+.category-item.active .cat-name { color: var(--color-primary); font-weight: 600; }
+.cat-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.cat-name { font-size: 13.5px; color: var(--text-primary); flex: 1; min-width: 0; }
+.cat-count {
+  font-size: 11px; font-weight: 600;
+  color: var(--text-tertiary); background: var(--surface-2);
+  padding: 1px 7px; border-radius: 20px;
+}
+.category-item.active .cat-count { background: rgba(79,110,247,0.12); color: var(--color-primary); }
+.cat-actions {
+  display: flex; gap: 3px;
+  opacity: 0; transition: opacity var(--transition);
+}
+.category-item:hover .cat-actions { opacity: 1; }
+.cat-act-btn {
+  width: 22px; height: 22px;
+  border: none; background: transparent; cursor: pointer;
+  border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--text-tertiary);
+  transition: all var(--transition);
+}
+.cat-act-btn:hover { background: var(--border); color: var(--text-primary); }
+
+.category-footer { padding: 10px 8px; border-top: 1px solid var(--border); }
+
+/* 右侧主内容 */
+.main-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* 统计卡片行 */
+.stats-row {
+  padding: 16px 20px 12px;
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.stat-card {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition);
+  cursor: default;
+}
+.stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+.stat-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.stat-value { font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+.stat-trend {
+  margin-left: auto; font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; gap: 2px;
+}
+.trend-up   { color: var(--color-success); }
+.trend-down { color: var(--color-danger); }
+
+/* 工具栏 */
+.toolbar {
+  padding: 0 20px 12px;
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+
+.filter-group { display: flex; gap: 6px; }
+.filter-chip {
+  padding: 5px 14px; border-radius: 20px; font-size: 12.5px;
+  font-weight: 500; cursor: pointer; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text-secondary);
+  transition: all var(--transition);
+}
+.filter-chip:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }
+.filter-chip.active { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); font-weight: 600; }
+
+.toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+.select-box {
+  padding: 6px 28px 6px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-2); background: var(--surface);
+  font-family: var(--font); font-size: 13px; color: var(--text-primary);
+  outline: none; cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; background-size: 16px;
+  transition: border-color var(--transition);
+}
+.select-box:focus { border-color: var(--color-primary); }
+
+/* 测试用例表格区 */
+.table-area {
+  flex: 1; overflow-y: auto; padding: 0 20px 20px;
+}
+.table-area::-webkit-scrollbar { width: 5px; }
+.table-area::-webkit-scrollbar-track { background: transparent; }
+.table-area::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+
+.case-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  background: var(--surface); border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+}
+
+.case-table thead tr {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.case-table th {
+  padding: 11px 14px; text-align: left;
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.case-table th:first-child { padding-left: 16px; }
+
+.case-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+.case-table tbody tr:last-child { border-bottom: none; }
+.case-table tbody tr:hover { background: rgba(249,250,251,0.9); }
+
+.case-table td {
+  padding: 13px 14px; vertical-align: middle;
+}
+.case-table td:first-child { padding-left: 16px; }
+
+/* 复选框样式 */
+.cb-wrap { display: flex; align-items: center; justify-content: center; }
+.cb-wrap input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--color-primary); cursor: pointer;
+  border-radius: 3px;
+}
+
+/* 状态标签 */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; display: block; }
+
+.status-pass    { color: #059669; background: #D1FAE5; }
+.status-pass::before    { background: #10B981; }
+.status-fail    { color: #DC2626; background: #FEE2E2; }
+.status-fail::before    { background: #EF4444; }
+.status-running { color: #1D4ED8; background: #DBEAFE; }
+.status-running::before { background: #3B82F6; animation: pulse-dot 1.2s infinite; }
+.status-pending { color: #92400E; background: #FEF3C7; }
+.status-pending::before { background: #F59E0B; }
+.status-skip    { color: #6B7280; background: #F3F4F6; }
+.status-skip::before    { background: #9CA3AF; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* 进度条 */
+.progress-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.progress-bar {
+  flex: 1; height: 6px; background: var(--border);
+  border-radius: 20px; overflow: hidden; min-width: 80px;
+}
+.progress-fill { height: 100%; border-radius: 20px; transition: width 0.6s ease; }
+.pf-green { background: linear-gradient(90deg,#10B981,#34D399); }
+.pf-red   { background: linear-gradient(90deg,#EF4444,#F87171); }
+.pf-blue  { background: linear-gradient(90deg,#3B82F6,#60A5FA); }
+.progress-text { font-size: 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+
+/* 操作列 */
+.action-group { display: flex; align-items: center; gap: 4px; }
+.action-btn {
+  width: 28px; height: 28px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; border: none; font-size: 14px;
+  background: transparent; color: var(--text-tertiary);
+  transition: all var(--transition);
+  line-height: 1;
+}
+.action-btn:hover { background: var(--surface-2); color: var(--text-primary); }
+.action-btn.view:hover { background: var(--color-info-light); color: var(--color-info); }
+.action-btn.run:hover { background: var(--color-primary-light); color: var(--color-primary); }
+.action-btn.del:hover { background: var(--color-danger-light); color: var(--color-danger); }
+.action-btn.edit:hover { background: #EFF6FF; color: #3B82F6; }
+
+/* 名称列 */
+.case-name-wrap { display: flex; align-items: center; gap: 8px; }
+.case-tag {
+  display: inline-block; padding: 1px 7px;
+  border-radius: 4px; font-size: 11px; font-weight: 600;
+}
+.tag-api { background: #EDE9FE; color: #7C3AED; }
+.tag-web { background: #FEF3C7; color: #D97706; }
+.tag-rpa { background: #D1FAE5; color: #065F46; }
+.tag-perf{ background: #FEE2E2; color: #B91C1C; }
+.case-name { font-size: 13.5px; font-weight: 500; color: var(--text-primary); }
+.case-desc { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+
+/* 触发类型 */
+.trigger-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--text-secondary);
+}
+.trigger-badge.cron { color: #7C3AED; }
+.trigger-badge.manual { color: #0891B2; }
+
+/* 时间列 */
+.time-cell { font-size: 12.5px; color: var(--text-secondary); }
+.time-cell .date { color: var(--text-primary); font-weight: 500; }
+
+/* 执行时长 */
+.duration {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12.5px; font-family: var(--mono);
+  color: var(--text-secondary);
+}
+
+/* =========================================
+   右侧详情抽屉 - 优化图层置顶
+   ========================================= */
+.detail-drawer {
+  width: 380px; flex-shrink: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: -4px 0 16px rgba(0,0,0,0.04);
+  position: relative;
+  z-index: 9999; /* 确保详情窗口在最上层 */
+  transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-radius: 16px 0 0 16px;
+  margin: 8px 0 8px 8px;
+  background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.1), 
+              0 12px 48px rgba(0,0,0,0.08),
+              inset 1px 0 0 rgba(255,255,255,0.9);
+  backdrop-filter: blur(8px);
+}
+
+.drawer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+}
+.drawer-title { font-weight: 700; font-size: 15px; flex: 1; }
+.drawer-collapse-btn {
+  position: fixed;
+  right: 380px;
+  top: 80px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  display: none; /* 默认隐藏，展开详情后由JS显示 */
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+  z-index: 10001;
+}
+.drawer-collapse-btn:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: -3px 0 12px rgba(79,110,247,0.2);
+  transform: scale(1.08);
+}
+.drawer-collapse-btn:active {
+  transform: scale(1);
+  box-shadow: -1px 0 4px rgba(0,0,0,0.05);
+}
+
+.drawer-tabs {
+  display: flex; border-bottom: 1px solid var(--border); padding: 0 20px;
+}
+.drawer-tab {
+  padding: 10px 14px; cursor: pointer; font-size: 13.5px; font-weight: 500;
+  color: var(--text-secondary); border-bottom: 2px solid transparent;
+  transition: all var(--transition); margin-bottom: -1px;
+}
+.drawer-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+.drawer-tab:hover:not(.active) { color: var(--text-primary); }
+
+.drawer-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.drawer-body::-webkit-scrollbar { width: 4px; }
+.drawer-body::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+
+/* 详情字段 */
+.detail-section { margin-bottom: 20px; }
+.detail-section-title {
+  font-size: 12px; font-weight: 600; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.detail-item { }
+.detail-item.full { grid-column: span 2; }
+.detail-key { font-size: 11.5px; color: var(--text-tertiary); margin-bottom: 3px; }
+.detail-val { font-size: 13.5px; color: var(--text-primary); font-weight: 500; }
+
+/* 日志区 */
+.log-box {
+  background: #0F172A; border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 12px;
+  font-family: var(--mono); font-size: 12.5px;
+  line-height: 1.7; overflow: auto; max-height: 200px;
+}
+.log-box::-webkit-scrollbar { width: 4px; }
+.log-box::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+/* 详情抽屉底部操作栏 */
+.drawer-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 20px 24px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04);
+}
+.drawer-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.08), transparent);
+}
+.footer-action-group {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  max-width: 500px;
+  justify-content: center;
+  align-items: center;
+}
+.footer-action-group .btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: all 0.25s ease;
+  min-height: 44px;
+  cursor: pointer;
+  user-select: none;
+  border: 2px solid transparent;
+}
+.footer-action-group .btn-secondary {
+  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+  color: #1D4ED8;
+  border: 2px solid #93C5FD;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+.footer-action-group .btn-secondary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.15), transparent);
+  transition: left 0.5s ease;
+}
+.footer-action-group .btn-secondary:hover {
+  background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%);
+  color: #1E40AF;
+  border-color: #60A5FA;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.2);
+}
+.footer-action-group .btn-secondary:hover::before {
+  left: 100%;
+}
+.footer-action-group .btn-secondary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.15);
+}
+.footer-action-group .btn-danger {
+  background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);
+  color: #DC2626;
+  border: 2px solid #FCA5A5;
+  box-shadow: 0 2px 6px rgba(220,38,38,0.12);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+.footer-action-group .btn-danger::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(220, 38, 38, 0.15), transparent);
+  transition: left 0.5s ease;
+}
+.footer-action-group .btn-danger:hover {
+  background: linear-gradient(135deg, #FCA5A5 0%, #F87171 100%);
+  color: white;
+  border-color: #DC2626;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 20px rgba(220,38,38,0.25);
+}
+.footer-action-group .btn-danger:hover::before {
+  left: 100%;
+}
+.footer-action-group .btn-danger:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.15);
+  border-color: #DC2626;
+}
+.btn-icon {
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-text {
+  flex: 1;
+  text-align: center;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.log-line { display: block; }
+.log-info    { color: #60A5FA; }
+.log-success { color: #34D399; }
+.log-warn    { color: #FBBF24; }
+.log-error   { color: #F87171; }
+.log-time    { color: #475569; margin-right: 8px; }
+.log-step    { color: #94A3B8; font-weight: 500; }
+
+/* 历史执行列表 */
+.history-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+}
+.history-item:last-child { border-bottom: none; }
+.history-num { font-size: 12px; color: var(--text-tertiary); width: 24px; }
+.history-info { flex: 1; min-width: 0; }
+.history-time { font-size: 12px; color: var(--text-secondary); }
+.history-dur  { font-size: 11.5px; color: var(--text-tertiary); margin-top: 1px; font-family: var(--mono); }
+
+/* =========================================
+   定时任务配置面板 (Modal)
+   ========================================= */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(15,23,42,0.55); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--transition);
+}
+.modal-overlay.show { opacity: 1; pointer-events: all; }
+
+.modal {
+  background: var(--surface); border-radius: var(--radius-xl);
+  width: 540px; max-width: calc(100vw - 40px); max-height: 90vh;
+  overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(16px) scale(0.98);
+  transition: transform 280ms cubic-bezier(0.34,1.56,0.64,1);
+}
+.modal-overlay.show .modal { transform: translateY(0) scale(1); }
+
+.modal-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.modal-icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: linear-gradient(135deg,#EEF1FF,#C7D2FE);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.modal-title  { font-size: 17px; font-weight: 700; }
+.modal-desc   { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+.modal-close  { margin-left: auto; width: 30px; height: 30px; border: none; background: transparent; cursor: pointer; border-radius: 8px; color: var(--text-tertiary); font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all var(--transition); }
+.modal-close:hover { background: var(--surface-2); color: var(--text-primary); }
+
+.modal-body   { padding: 20px 24px; overflow-y: auto; flex: 1; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+
+/* 表单元素 */
+.form-group { margin-bottom: 18px; }
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.form-label span { color: var(--color-danger); margin-left: 3px; }
+.form-input {
+  width: 100%; padding: 9px 12px;
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-sm); font-size: 13.5px;
+  font-family: var(--font); color: var(--text-primary);
+  background: var(--surface); outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.form-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(79,110,247,0.1); }
+.form-input::placeholder { color: var(--text-tertiary); }
+textarea.form-input { resize: vertical; min-height: 80px; line-height: 1.6; }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+/* Cron 可视化 */
+.cron-visual {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-top: 10px;
+}
+.cron-fields { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.cron-field { text-align: center; }
+.cron-input {
+  width: 100%; text-align: center;
+  padding: 7px 4px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 6px; font-size: 15px; font-weight: 700;
+  font-family: var(--mono); color: var(--color-primary);
+  background: var(--surface); outline: none;
+  transition: all var(--transition);
+}
+.cron-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(79,110,247,0.1); }
+.cron-label { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; text-align: center; }
+.cron-desc {
+  margin-top: 10px; padding: 8px 12px;
+  background: var(--color-primary-light); border-radius: 6px;
+  font-size: 12.5px; color: var(--color-primary); font-weight: 500;
+  display: flex; align-items: center; gap: 6px;
+}
+
+/* 快捷Cron */
+.quick-cron { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.quick-tag {
+  padding: 4px 12px; border-radius: 20px;
+  border: 1.5px solid var(--border); background: var(--surface);
+  font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  transition: all var(--transition);
+}
+.quick-tag:hover, .quick-tag.active {
+  border-color: var(--color-primary); color: var(--color-primary);
+  background: var(--color-primary-light); font-weight: 500;
+}
+
+/* 通知配置 */
+.notify-group { display: flex; flex-direction: column; gap: 8px; }
+.notify-row { display: flex; align-items: center; gap: 10px; }
+.toggle {
+  width: 38px; height: 22px; position: relative; flex-shrink: 0;
+}
+.toggle input { display: none; }
+.toggle-track {
+  width: 100%; height: 100%; background: var(--border-2);
+  border-radius: 20px; cursor: pointer; transition: background var(--transition);
+}
+.toggle input:checked + .toggle-track { background: var(--color-primary); }
+.toggle-thumb {
+  position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; background: #fff;
+  border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: left var(--transition); pointer-events: none;
+}
+.toggle input:checked ~ .toggle-thumb { left: 19px; }
+.notify-label { font-size: 13px; color: var(--text-primary); }
+.notify-sub   { font-size: 12px; color: var(--text-tertiary); }
+
+/* =========================================
+   添加分类 Modal
+   ========================================= */
+.color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+.color-dot {
+  width: 26px; height: 26px; border-radius: 50%;
+  cursor: pointer; position: relative;
+  transition: transform var(--transition);
+  border: 2px solid transparent;
+}
+.color-dot:hover { transform: scale(1.15); }
+.color-dot.selected {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.9), 0 0 0 5px var(--text-secondary);
+}
+
+/* =========================================
+   运行确认 Modal
+   ========================================= */
+.run-info {
+  background: var(--surface-2); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.run-info-row { display: flex; gap: 8px; align-items: center; }
+.run-info-key { font-size: 12.5px; color: var(--text-secondary); width: 70px; flex-shrink: 0; }
+.run-info-val { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+
+/* 并发执行选项 */
+.exec-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.exec-opt {
+  padding: 12px; border: 1.5px solid var(--border);
+  border-radius: var(--radius); cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+.exec-opt:hover { border-color: var(--color-primary); background: var(--color-primary-light); }
+.exec-opt.selected { border-color: var(--color-primary); background: var(--color-primary-light); }
+.exec-opt-icon { font-size: 22px; margin-bottom: 6px; }
+.exec-opt-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.exec-opt-desc { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+
+/* =========================================
+   Toast 提示
+   ========================================= */
+.toast-container {
+  position: fixed; top: 18px; right: 20px; z-index: 999;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  padding: 12px 16px; border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); border: 1px solid var(--border);
+  font-size: 13.5px; color: var(--text-primary);
+  pointer-events: all;
+  transform: translateX(100%); opacity: 0;
+  transition: all 300ms cubic-bezier(0.34,1.56,0.64,1);
+  max-width: 340px;
+}
+.toast.show { transform: translateX(0); opacity: 1; }
+.toast-icon { font-size: 16px; flex-shrink: 0; }
+.toast-msg  { flex: 1; }
+.toast-close{ background: transparent; border: none; cursor: pointer; color: var(--text-tertiary); font-size: 14px; padding: 0; }
+.toast.success { border-left: 3px solid var(--color-success); }
+.toast.error   { border-left: 3px solid var(--color-danger); }
+.toast.info    { border-left: 3px solid var(--color-primary); }
+.toast.warning { border-left: 3px solid var(--color-warning); }
+
+/* =========================================
+   空状态
+   ========================================= */
+.empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 60px 20px; color: var(--text-tertiary);
+}
+.empty-icon { font-size: 48px; margin-bottom: 14px; opacity: 0.5; }
+.empty-text { font-size: 15px; font-weight: 600; color: var(--text-secondary); }
+.empty-sub  { font-size: 13px; margin-top: 5px; }
+
+/* =========================================
+   多选操作栏
+   ========================================= */
+.bulk-bar {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #1C2136; color: #E2E8F0;
+  border-radius: var(--radius-lg); padding: 10px 20px;
+  display: flex; align-items: center; gap: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  z-index: 50;
+  opacity: 0; pointer-events: none;
+  transform: translateX(-50%) translateY(20px);
+  transition: all 300ms cubic-bezier(0.34,1.56,0.64,1);
+}
+.bulk-bar.show { opacity: 1; pointer-events: all; transform: translateX(-50%) translateY(0); }
+.bulk-count { font-size: 14px; font-weight: 600; }
+.bulk-count span { color: var(--color-primary); }
+.bulk-divider { width: 1px; height: 20px; background: rgba(255,255,255,0.12); }
+.bulk-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 7px;
+  cursor: pointer; border: none; font-size: 13px; font-weight: 500;
+  font-family: var(--font); transition: all var(--transition);
+  color: #CBD5E1;
+}
+.bulk-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.bulk-btn.run { color: #60A5FA; }
+.bulk-btn.del { color: #F87171; }
+
+  /* 响应式 */
+  @media (max-width: 1200px) {
+    .stats-row { grid-template-columns: repeat(3,1fr); }
+  }
+  @media (max-width: 900px) {
+    .category-panel { width: 200px; }
+    .stats-row { grid-template-columns: repeat(2,1fr); }
+  }
+
+  /* 详情抽屉收起状态 */
+  .detail-drawer.collapsed {
+    width: 0;
+    min-width: 0;
+    border: none;
+    overflow: visible;
+    background: transparent;
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+  }
+  .detail-drawer.collapsed .drawer-header,
+  .detail-drawer.collapsed .drawer-tabs,
+  .detail-drawer.collapsed .drawer-body,
+  .detail-drawer.collapsed .drawer-footer {
+    display: none;
+  }
+
+  /* 优化2: 防止字段文案换行 */
+  .case-table th,
+  .case-table td {
+    white-space: nowrap;
+    min-width: 80px;
+  }
+  .case-name,
+  .cat-name,
+  .detail-val {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .case-table td:nth-child(2) { /* 用例名称列 */
+    max-width: 300px;
+  }
+  .case-table td:nth-child(3) { /* 业务分类列 */
+    max-width: 120px;
+  }
+  .case-table td:nth-child(4) { /* 通过率列 */
+    min-width: 130px;
+  }
+  .case-table td:nth-child(7) { /* 最近执行列 */
+    min-width: 100px;
+  }
+  .case-table td:nth-child(8) { /* 耗时列 */
+    min-width: 70px;
+  }
+
+  /* 优化3: 界面整体支持左右滑动 */
+  .main-panel {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .table-area {
+    min-width: 1000px;
+  }
+  .toolbar {
+    min-width: 1000px;
+  }
+  .stats-row {
+    min-width: 1000px;
+  }
+
+/* 选中行高亮 */
+.case-table tbody tr.selected { background: rgba(79,110,247,0.04); }
+
+/* 图标 emoji 大小修正 */
+.icon-sm { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- 侧边栏 -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-text">AutoTest</div>
+      <div class="logo-sub">自动化测试平台</div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">核心功能</div>
+    <div class="nav-item active">
+      <span class="nav-icon">🧪</span>
+      测试用例
+      <span class="nav-badge blue">142</span>
+    </div>
+    <div class="nav-item" onclick="showToast('功能开发中','info')">
+      <span class="nav-icon">📋</span>
+      执行计划
+    </div>
+    <div class="nav-item" onclick="showToast('功能开发中','info')">
+      <span class="nav-icon">📊</span>
+      测试报告
+      <span class="nav-badge">3</span>
+    </div>
+    <div class="nav-item" onclick="showToast('功能开发中','info')">
+      <span class="nav-icon">🔔</span>
+      告警通知
+      <span class="nav-badge">5</span>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">管理</div>
+    <div class="nav-item" onclick="showToast('功能开发中','info')">
+      <span class="nav-icon">🏷️</span>
+      分类管理
+    </div>
+    <div class="nav-item" onclick="showToast('功能开发中','info')">
+      <span class="nav-icon">🔌</span>
+      环境配置
+    </div>
+    <div class="nav-item" onclick="showToast('功能开发中','info')">
+      <span class="nav-icon">👥</span>
+      团队成员
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">系统</div>
+    <div class="nav-item" onclick="showToast('功能开发中','info')">
+      <span class="nav-icon">⚙️</span>
+      系统设置
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="avatar">张</div>
+      <div>
+        <div class="user-name">张明远</div>
+        <div class="user-role">管理员</div>
+      </div>
+      <span style="margin-left:auto;color:#475569;font-size:14px;">⋯</span>
+    </div>
+  </div>
+</aside>
+
+<!-- 主内容 -->
+<div class="main">
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <div>
+      <span class="topbar-title">测试用例</span>
+      <span class="topbar-desc">/ 全部业务</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary btn-sm" onclick="openModal('scheduleModal')">
+        ⏰ 定时配置
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="openModal('categoryModal')">
+        ➕ 新增分类
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="openModal('addCaseModal')">
+        ✚ 新建用例
+      </button>
+    </div>
+  </div>
+
+  <!-- 内容区 -->
+  <div class="content">
+    <!-- 左侧分类面板 -->
+    <div class="category-panel">
+      <div class="panel-header">
+        <div class="panel-header-title">
+          🗂️ 业务分类
+        </div>
+        <button class="btn btn-ghost btn-icon" style="font-size:18px;width:28px;height:28px;" onclick="openModal('categoryModal')" title="新增分类">＋</button>
+      </div>
+      <div class="category-search">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="搜索分类..." oninput="filterCategory(this.value)">
+        </div>
+      </div>
+      <div class="category-list" id="categoryList">
+        <div class="category-item active" onclick="selectCategory(this,'全部')">
+          <div class="cat-dot" style="background:#9CA3AF"></div>
+          <div class="cat-name">全部业务</div>
+          <div class="cat-count">142</div>
+        </div>
+        <div class="category-item" onclick="selectCategory(this,'支付核心')">
+          <div class="cat-dot" style="background:#4F6EF7"></div>
+          <div class="cat-name">💳 支付核心</div>
+          <div class="cat-count">38</div>
+          <div class="cat-actions">
+            <button class="cat-act-btn" onclick="event.stopPropagation();openModal('categoryModal')" title="编辑">✏️</button>
+            <button class="cat-act-btn" onclick="event.stopPropagation();deleteCategory(this)" title="删除">🗑️</button>
+          </div>
+        </div>
+        <div class="category-item" onclick="selectCategory(this,'用户中心')">
+          <div class="cat-dot" style="background:#10B981"></div>
+          <div class="cat-name">👤 用户中心</div>
+          <div class="cat-count">24</div>
+          <div class="cat-actions">
+            <button class="cat-act-btn" onclick="event.stopPropagation();openModal('categoryModal')" title="编辑">✏️</button>
+            <button class="cat-act-btn" onclick="event.stopPropagation();deleteCategory(this)" title="删除">🗑️</button>
+          </div>
+        </div>
+        <div class="category-item" onclick="selectCategory(this,'订单管理')">
+          <div class="cat-dot" style="background:#F59E0B"></div>
+          <div class="cat-name">📦 订单管理</div>
+          <div class="cat-count">31</div>
+          <div class="cat-actions">
+            <button class="cat-act-btn" onclick="event.stopPropagation();openModal('categoryModal')" title="编辑">✏️</button>
+            <button class="cat-act-btn" onclick="event.stopPropagation();deleteCategory(this)" title="删除">🗑️</button>
+          </div>
+        </div>
+        <div class="category-item" onclick="selectCategory(this,'消息通知')">
+          <div class="cat-dot" style="background:#EC4899"></div>
+          <div class="cat-name">📣 消息通知</div>
+          <div class="cat-count">18</div>
+          <div class="cat-actions">
+            <button class="cat-act-btn" onclick="event.stopPropagation();openModal('categoryModal')" title="编辑">✏️</button>
+            <button class="cat-act-btn" onclick="event.stopPropagation();deleteCategory(this)" title="删除">🗑️</button>
+          </div>
+        </div>
+        <div class="category-item" onclick="selectCategory(this,'风控系统')">
+          <div class="cat-dot" style="background:#EF4444"></div>
+          <div class="cat-name">🛡️ 风控系统</div>
+          <div class="cat-count">16</div>
+          <div class="cat-actions">
+            <button class="cat-act-btn" onclick="event.stopPropagation();openModal('categoryModal')" title="编辑">✏️</button>
+            <button class="cat-act-btn" onclick="event.stopPropagation();deleteCategory(this)" title="删除">🗑️</button>
+          </div>
+        </div>
+        <div class="category-item" onclick="selectCategory(this,'数据同步')">
+          <div class="cat-dot" style="background:#8B5CF6"></div>
+          <div class="cat-name">🔄 数据同步</div>
+          <div class="cat-count">15</div>
+          <div class="cat-actions">
+            <button class="cat-act-btn" onclick="event.stopPropagation();openModal('categoryModal')" title="编辑">✏️</button>
+            <button class="cat-act-btn" onclick="event.stopPropagation();deleteCategory(this)" title="删除">🗑️</button>
+          </div>
+        </div>
+      </div>
+      <div class="category-footer">
+        <button class="btn btn-secondary btn-sm" style="width:100%" onclick="openModal('categoryModal')">
+          ＋ 新增分类
+        </button>
+      </div>
+    </div>
+
+    <!-- 主面板 -->
+    <div class="main-panel">
+      <!-- 统计卡片 -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#EEF1FF">🧪</div>
+          <div>
+            <div class="stat-value" style="color:#4F6EF7">142</div>
+            <div class="stat-label">用例总数</div>
+          </div>
+          <div class="stat-trend trend-up">↑ 12%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#D1FAE5">✅</div>
+          <div>
+            <div class="stat-value" style="color:#10B981">118</div>
+            <div class="stat-label">通过</div>
+          </div>
+          <div class="stat-trend trend-up">↑ 3%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#FEE2E2">❌</div>
+          <div>
+            <div class="stat-value" style="color:#EF4444">8</div>
+            <div class="stat-label">失败</div>
+          </div>
+          <div class="stat-trend trend-down">↑ 2</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#DBEAFE">⚡</div>
+          <div>
+            <div class="stat-value" style="color:#3B82F6">3</div>
+            <div class="stat-label">运行中</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#FEF3C7">📈</div>
+          <div>
+            <div class="stat-value" style="color:#D97706">83.1%</div>
+            <div class="stat-label">通过率</div>
+          </div>
+          <div class="stat-trend trend-down">↓ 1.2%</div>
+        </div>
+      </div>
+
+      <!-- 工具栏 -->
+      <div class="toolbar">
+        <div class="filter-group">
+          <div class="filter-chip active" onclick="setFilter(this,'all')">全部</div>
+          <div class="filter-chip" onclick="setFilter(this,'pass')">✅ 通过</div>
+          <div class="filter-chip" onclick="setFilter(this,'fail')">❌ 失败</div>
+          <div class="filter-chip" onclick="setFilter(this,'running')">⚡ 运行中</div>
+          <div class="filter-chip" onclick="setFilter(this,'pending')">⏳ 等待</div>
+        </div>
+        <div class="toolbar-right">
+          <select class="select-box" onchange="showToast('排序方式已更新','info')">
+            <option>最近执行</option>
+            <option>创建时间</option>
+            <option>用例名称</option>
+            <option>通过率</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="showToast('批量操作功能','info')">
+            ☰ 批量
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="runAll()">
+            ▶ 全部运行
+          </button>
+        </div>
+      </div>
+
+      <!-- 表格 -->
+      <div class="table-area">
+        <table class="case-table" id="caseTable">
+          <thead>
+            <tr>
+              <th style="width:40px"><div class="cb-wrap"><input type="checkbox" id="checkAll" onchange="toggleAll(this)"></div></th>
+              <th>用例名称</th>
+              <th>业务分类</th>
+              <th style="min-width:130px">通过率</th>
+              <th>状态</th>
+              <th>触发方式</th>
+              <th>最近执行</th>
+              <th>耗时</th>
+              <th style="width:130px; text-align:center">操作</th>
+            </tr>
+          </thead>
+          <tbody id="caseBody">
+            <!-- 动态渲染 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 右侧详情抽屉 -->
+    <div class="detail-drawer collapsed" id="detailDrawer">
+      <div class="drawer-header">
+        <div>
+          <div class="drawer-title" id="drawerTitle">支付下单接口测试</div>
+          <div style="margin-top:4px"><span class="status-badge status-pass">通过</span></div>
+        </div>
+      </div>
+      <div class="drawer-tabs">
+        <div class="drawer-tab active" onclick="switchTab(this,'overview')">概览</div>
+        <div class="drawer-tab" onclick="switchTab(this,'log')">日志</div>
+        <div class="drawer-tab" onclick="switchTab(this,'history')">历史</div>
+      </div>
+      <div class="drawer-body" id="drawerContent">
+        <!-- 概览 -->
+        <div id="tab-overview">
+          <div class="detail-section">
+            <div class="detail-section-title">基本信息</div>
+            <div class="detail-grid">
+              <div class="detail-item">
+                <div class="detail-key">所属分类</div>
+                <div class="detail-val">💳 支付核心</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-key">用例类型</div>
+                <div class="detail-val"><span class="case-tag tag-api">API</span></div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-key">执行环境</div>
+                <div class="detail-val">生产环境</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-key">负责人</div>
+                <div class="detail-val">张明远</div>
+              </div>
+              <div class="detail-item full">
+                <div class="detail-key">定时计划</div>
+                <div class="detail-val" style="color:#7C3AED">⏰ 每天 06:00 & 18:00</div>
+              </div>
+            </div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-section-title">最近一次执行</div>
+            <div class="detail-grid">
+              <div class="detail-item">
+                <div class="detail-key">开始时间</div>
+                <div class="detail-val">06:00:12</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-key">结束时间</div>
+                <div class="detail-val">06:00:25</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-key">执行耗时</div>
+                <div class="detail-val" style="font-family:var(--mono)">13.4s</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-key">断言结果</div>
+                <div class="detail-val">12/12 通过</div>
+              </div>
+            </div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-section-title">通过率趋势（近7次）</div>
+            <div style="display:flex;align-items:flex-end;gap:6px;height:50px;margin-top:8px">
+              <div style="flex:1;background:var(--color-success);border-radius:3px;height:100%;opacity:0.85;cursor:pointer" title="100%"></div>
+              <div style="flex:1;background:var(--color-success);border-radius:3px;height:100%;opacity:0.85;cursor:pointer" title="100%"></div>
+              <div style="flex:1;background:var(--color-danger);border-radius:3px;height:40%;opacity:0.85;cursor:pointer" title="50%"></div>
+              <div style="flex:1;background:var(--color-success);border-radius:3px;height:100%;opacity:0.85;cursor:pointer" title="100%"></div>
+              <div style="flex:1;background:var(--color-success);border-radius:3px;height:100%;opacity:0.85;cursor:pointer" title="100%"></div>
+              <div style="flex:1;background:var(--color-warning);border-radius:3px;height:75%;opacity:0.85;cursor:pointer" title="75%"></div>
+              <div style="flex:1;background:var(--color-success);border-radius:3px;height:100%;opacity:0.85;cursor:pointer" title="100%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--text-tertiary)">
+              <span>7次前</span><span>今天</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" style="flex:1" onclick="openModal('runModal')">▶ 立即运行</button>
+            <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openModal('scheduleModal')">⏰ 定时配置</button>
+          </div>
+        </div>
+
+        <!-- 日志 -->
+        <div id="tab-log" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span style="font-size:13px;font-weight:600">执行日志</span>
+            <button class="btn btn-ghost btn-xs">📋 复制</button>
+          </div>
+          <div class="log-box">
+            <span class="log-line"><span class="log-time">06:00:12.001</span><span class="log-info">[INFO]</span> <span class="log-step">▶ 开始执行用例：支付下单接口测试</span></span>
+            <span class="log-line"><span class="log-time">06:00:12.045</span><span class="log-info">[INFO]</span> 连接测试环境 https://api.pay.example.com</span>
+            <span class="log-line"><span class="log-time">06:00:12.310</span><span class="log-success">[PASS]</span> 步骤1：创建预支付订单 → HTTP 200</span>
+            <span class="log-line"><span class="log-time">06:00:13.120</span><span class="log-success">[PASS]</span> 步骤2：验签成功 → signature OK</span>
+            <span class="log-line"><span class="log-time">06:00:14.890</span><span class="log-success">[PASS]</span> 步骤3：回调通知接收 → status=paid</span>
+            <span class="log-line"><span class="log-time">06:00:21.003</span><span class="log-success">[PASS]</span> 步骤4：查询订单状态 → SUCCESS</span>
+            <span class="log-line"><span class="log-time">06:00:24.882</span><span class="log-success">[PASS]</span> 所有断言通过（12/12）</span>
+            <span class="log-line"><span class="log-time">06:00:25.001</span><span class="log-info">[INFO]</span> <span class="log-step">■ 执行结束，耗时 13.4s</span></span>
+          </div>
+        </div>
+
+        <!-- 历史 -->
+        <div id="tab-history" style="display:none">
+          <div id="historyList"></div>
+        </div>
+      </div>
+      <!-- 底部操作栏 -->
+      <div class="drawer-footer">
+        <div class="footer-action-group">
+          <button class="btn btn-secondary" onclick="editCurrentCase()">
+            <span class="btn-icon">✏️</span>
+            <span class="btn-text">编辑用例</span>
+          </button>
+          <button class="btn btn-danger" onclick="deleteCurrentCase()">
+            <span class="btn-icon">🗑️</span>
+            <span class="btn-text">删除用例</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 详情抽屉收起按钮（固定在右侧） -->
+<button class="drawer-collapse-btn" id="drawerCollapseBtn" onclick="closeDrawer()" title="收起详情">
+  &lt;
+</button>
+
+<!-- ============ 定时配置 Modal ============ -->
+<div class="modal-overlay" id="scheduleModal" onclick="overlayClose(event,'scheduleModal')">
+  <div class="modal" style="width:560px">
+    <div class="modal-header">
+      <div class="modal-icon">⏰</div>
+      <div>
+        <div class="modal-title">定时触发配置</div>
+        <div class="modal-desc">设置 Cron 表达式，系统将按计划自动执行</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('scheduleModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <div class="form-label">应用范围</div>
+        <select class="form-input">
+          <option>全部业务分类</option>
+          <option>💳 支付核心</option>
+          <option>📦 订单管理</option>
+          <option>👤 用户中心</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">快捷选择</div>
+        <div class="quick-cron" id="quickCronGroup">
+          <div class="quick-tag active" onclick="setCron(this,'0 6 * * *','每天早上 6:00')">每天早上6点</div>
+          <div class="quick-tag" onclick="setCron(this,'0 6,18 * * *','每天 06:00 & 18:00')">每天两次</div>
+          <div class="quick-tag" onclick="setCron(this,'0 */2 * * *','每2小时执行')">每2小时</div>
+          <div class="quick-tag" onclick="setCron(this,'*/30 * * * *','每30分钟执行')">每30分钟</div>
+          <div class="quick-tag" onclick="setCron(this,'0 9 * * 1','每周一早上9点')">每周一</div>
+          <div class="quick-tag" onclick="setCron(this,'0 10 * * 1-5','工作日每天10点')">工作日</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Cron 表达式 <span>*</span></div>
+        <div class="cron-visual">
+          <div class="cron-fields">
+            <div class="cron-field">
+              <input class="cron-input" id="cron-min" value="0" maxlength="6" oninput="updateCronDesc()">
+              <div class="cron-label">分钟</div>
+            </div>
+            <div class="cron-field">
+              <input class="cron-input" id="cron-hour" value="6" maxlength="6" oninput="updateCronDesc()">
+              <div class="cron-label">小时</div>
+            </div>
+            <div class="cron-field">
+              <input class="cron-input" id="cron-day" value="*" maxlength="6" oninput="updateCronDesc()">
+              <div class="cron-label">日期</div>
+            </div>
+            <div class="cron-field">
+              <input class="cron-input" id="cron-month" value="*" maxlength="6" oninput="updateCronDesc()">
+              <div class="cron-label">月份</div>
+            </div>
+            <div class="cron-field">
+              <input class="cron-input" id="cron-week" value="*" maxlength="6" oninput="updateCronDesc()">
+              <div class="cron-label">星期</div>
+            </div>
+          </div>
+          <div class="cron-desc" id="cronDescBox">
+            💬 每天早上 6:00 执行
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">超时时间（秒）</div>
+        <input type="number" class="form-input" value="300" min="10" max="3600" placeholder="默认300秒">
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">失败通知</div>
+        <div class="notify-group">
+          <div class="notify-row">
+            <label class="toggle">
+              <input type="checkbox" checked id="notifyEmail">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <div>
+              <div class="notify-label">📧 邮件通知</div>
+              <div class="notify-sub">失败时自动发送至负责人邮箱</div>
+            </div>
+          </div>
+          <div class="notify-row">
+            <label class="toggle">
+              <input type="checkbox" id="notifyWeChat">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <div>
+              <div class="notify-label">💬 企业微信</div>
+              <div class="notify-sub">发送到测试群机器人</div>
+            </div>
+          </div>
+          <div class="notify-row">
+            <label class="toggle">
+              <input type="checkbox" id="notifySMS">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <div>
+              <div class="notify-label">📱 短信通知</div>
+              <div class="notify-sub">严重失败时发短信告警</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('scheduleModal')">取消</button>
+      <button class="btn btn-primary" onclick="saveSchedule()">💾 保存配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 新增分类 Modal ============ -->
+<div class="modal-overlay" id="categoryModal" onclick="overlayClose(event,'categoryModal')">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <div class="modal-icon">🗂️</div>
+      <div>
+        <div class="modal-title">新增业务分类</div>
+        <div class="modal-desc">创建一个业务分类，方便管理和统计测试用例</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('categoryModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">分类名称 <span>*</span></label>
+        <input type="text" class="form-input" id="catName" placeholder="如：支付核心、订单管理...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">选择颜色</label>
+        <div class="color-picker" id="colorPicker">
+          <div class="color-dot selected" style="background:#4F6EF7" data-color="#4F6EF7" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#10B981" data-color="#10B981" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#F59E0B" data-color="#F59E0B" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#EF4444" data-color="#EF4444" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#EC4899" data-color="#EC4899" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#8B5CF6" data-color="#8B5CF6" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#0EA5E9" data-color="#0EA5E9" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#84CC16" data-color="#84CC16" onclick="pickColor(this)"></div>
+          <div class="color-dot" style="background:#F97316" data-color="#F97316" onclick="pickColor(this)"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">选择图标</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px" id="iconPicker">
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--color-primary);border-radius:8px;background:var(--color-primary-light)" onclick="pickIcon(this,'💳')">💳</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'📦')">📦</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'👤')">👤</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'🛡️')">🛡️</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'📣')">📣</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'🔄')">🔄</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'📊')">📊</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'🚀')">🚀</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'⚡')">⚡</div>
+          <div class="cat-act-btn" style="width:36px;height:36px;font-size:20px;border:1.5px solid var(--border);border-radius:8px" onclick="pickIcon(this,'🌐')">🌐</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">备注说明</label>
+        <textarea class="form-input" placeholder="此分类的用途说明（选填）" rows="3"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('categoryModal')">取消</button>
+      <button class="btn btn-primary" onclick="addCategory()">✔ 创建分类</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 运行确认 Modal ============ -->
+<div class="modal-overlay" id="runModal" onclick="overlayClose(event,'runModal')">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <div class="modal-icon">▶️</div>
+      <div>
+        <div class="modal-title">立即运行</div>
+        <div class="modal-desc">即将手动触发执行该测试用例</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('runModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="run-info" id="runInfoBox">
+        <div class="run-info-row">
+          <div class="run-info-key">用例名称</div>
+          <div class="run-info-val" id="runCaseName">支付下单接口测试</div>
+        </div>
+        <div class="run-info-row">
+          <div class="run-info-key">所属分类</div>
+          <div class="run-info-val">💳 支付核心</div>
+        </div>
+        <div class="run-info-row">
+          <div class="run-info-key">执行环境</div>
+          <div class="run-info-val">
+            <select class="select-box" style="padding:3px 24px 3px 8px">
+              <option>生产环境</option>
+              <option>预发布环境</option>
+              <option>测试环境</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">执行模式</div>
+        <div class="exec-options">
+          <div class="exec-opt selected" onclick="selectExecOpt(this)">
+            <div class="exec-opt-icon">🔗</div>
+            <div class="exec-opt-name">串行执行</div>
+            <div class="exec-opt-desc">顺序执行，便于调试</div>
+          </div>
+          <div class="exec-opt" onclick="selectExecOpt(this)">
+            <div class="exec-opt-icon">⚡</div>
+            <div class="exec-opt-name">并行执行</div>
+            <div class="exec-opt-desc">多线程加速，节省时间</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notify-row">
+        <label class="toggle">
+          <input type="checkbox" checked id="runNotify">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+        <div class="notify-label">执行完成后发送通知</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('runModal')">取消</button>
+      <button class="btn btn-success" onclick="confirmRun()">▶ 确认运行</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 新建用例 Modal ============ -->
+<div class="modal-overlay" id="addCaseModal" onclick="overlayClose(event,'addCaseModal')">
+  <div class="modal" style="width:540px">
+    <div class="modal-header">
+      <div class="modal-icon">✚</div>
+      <div>
+        <div class="modal-title">新建测试用例</div>
+        <div class="modal-desc">配置测试用例基本信息与执行参数</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('addCaseModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">用例名称 <span>*</span></label>
+          <input type="text" class="form-input" id="newCaseName" placeholder="简洁描述测试目标">
+        </div>
+        <div class="form-group">
+          <label class="form-label">用例类型 <span>*</span></label>
+          <select class="form-input">
+            <option>API 接口测试</option>
+            <option>Web UI 测试</option>
+            <option>RPA 流程测试</option>
+            <option>性能压测</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">所属分类 <span>*</span></label>
+          <select class="form-input">
+            <option>💳 支付核心</option>
+            <option>📦 订单管理</option>
+            <option>👤 用户中心</option>
+            <option>🛡️ 风控系统</option>
+            <option>📣 消息通知</option>
+            <option>🔄 数据同步</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">执行环境</label>
+          <select class="form-input">
+            <option>测试环境</option>
+            <option>预发布环境</option>
+            <option>生产环境</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">测试地址 / 入口</label>
+        <input type="text" class="form-input" placeholder="https://api.example.com/v1/...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">用例描述</label>
+        <textarea class="form-input" placeholder="简要描述此用例验证的业务场景..." rows="3"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">超时时间（秒）</label>
+          <input type="number" class="form-input" value="60" min="5">
+        </div>
+        <div class="form-group">
+          <label class="form-label">失败重试次数</label>
+          <input type="number" class="form-input" value="1" min="0" max="5">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addCaseModal')">取消</button>
+      <button class="btn btn-primary" onclick="addCase()" id="addCaseSubmit">✚ 创建用例</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- 批量操作栏 -->
+<div class="bulk-bar" id="bulkBar">
+  <div class="bulk-count">已选 <span id="bulkCount">0</span> 条</div>
+  <div class="bulk-divider"></div>
+  <button class="bulk-btn run" onclick="bulkRun()">▶ 批量运行</button>
+  <button class="bulk-btn" onclick="showToast('已导出选中用例报告','success')">📄 导出报告</button>
+  <button class="bulk-btn del" onclick="bulkDelete()">🗑️ 批量删除</button>
+  <div class="bulk-divider"></div>
+  <button class="bulk-btn" onclick="clearSelection()">✕ 取消</button>
+</div>
+
+<script>
+// =========================================
+// 数据模型
+// =========================================
+const cases = [
+  { id:1, name:'支付下单接口测试', desc:'验证创单→支付→回调完整链路', type:'api', category:'支付核心', catColor:'#4F6EF7', pass:38, total:38, status:'pass', trigger:'cron', lastRun:'今天 06:00', duration:'13.4s' },
+  { id:2, name:'退款申请与审核流程', desc:'全额/部分退款，多场景覆盖', type:'api', category:'支付核心', catColor:'#4F6EF7', pass:20, total:22, status:'fail', trigger:'manual', lastRun:'昨天 15:32', duration:'28.1s' },
+  { id:3, name:'用户注册登录全流程', desc:'手机号/邮箱注册与三方登录', type:'web', category:'用户中心', catColor:'#10B981', pass:24, total:24, status:'pass', trigger:'cron', lastRun:'今天 06:00', duration:'45.2s' },
+  { id:4, name:'订单创建与状态流转', desc:'创建→待付→已付→已发货→完成', type:'api', category:'订单管理', catColor:'#F59E0B', pass:0, total:31, status:'running', trigger:'cron', lastRun:'今天 09:12', duration:'--' },
+  { id:5, name:'商品库存超卖防护', desc:'并发下单压测，库存扣减正确性', type:'perf', category:'订单管理', catColor:'#F59E0B', pass:10, total:15, status:'fail', trigger:'manual', lastRun:'今天 08:00', duration:'3m 12s' },
+  { id:6, name:'短信验证码发送与验证', desc:'验证码下发、失效、重试机制', type:'api', category:'消息通知', catColor:'#EC4899', pass:18, total:18, status:'pass', trigger:'cron', lastRun:'昨天 18:00', duration:'6.8s' },
+  { id:7, name:'黑名单拦截规则验证', desc:'命中黑名单自动阻断，误拦率检验', type:'api', category:'风控系统', catColor:'#EF4444', pass:0, total:16, status:'pending', trigger:'cron', lastRun:'昨天 22:00', duration:'--' },
+  { id:8, name:'数据双写一致性校验', desc:'MySQL & Redis 双写结果比对', type:'rpa', category:'数据同步', catColor:'#8B5CF6', pass:15, total:15, status:'pass', trigger:'cron', lastRun:'今天 03:00', duration:'1m 42s' },
+];
+
+const historyData = [
+  { no:1, status:'pass', time:'今天 06:00', dur:'13.4s' },
+  { no:2, status:'pass', time:'昨天 18:00', dur:'12.8s' },
+  { no:3, status:'fail', time:'昨天 06:00', dur:'5.1s' },
+  { no:4, status:'pass', time:'2天前 18:00', dur:'14.2s' },
+  { no:5, status:'pass', time:'2天前 06:00', dur:'13.9s' },
+];
+
+// =========================================
+// 渲染表格
+// =========================================
+function renderTable(data) {
+  const tbody = document.getElementById('caseBody');
+  if(!data || data.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">暂无匹配的测试用例</div><div class="empty-sub">调整筛选条件或新建用例</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(c => {
+    const pct = c.total > 0 ? Math.round(c.pass / c.total * 100) : 0;
+    const pfClass = pct >= 90 ? 'pf-green' : pct >= 60 ? 'pf-blue' : 'pf-red';
+    const statusMap = { pass:'status-pass', fail:'status-fail', running:'status-running', pending:'status-pending', skip:'status-skip' };
+    const statusLabel = { pass:'通过', fail:'失败', running:'运行中', pending:'等待中', skip:'已跳过' };
+    const typeMap = { api:'tag-api', web:'tag-web', rpa:'tag-rpa', perf:'tag-perf' };
+    const typeLabel = { api:'API', web:'WEB', rpa:'RPA', perf:'PERF' };
+    const triggerHtml = c.trigger === 'cron'
+      ? `<span class="trigger-badge cron">⏰ 定时</span>`
+      : `<span class="trigger-badge manual">👆 手动</span>`;
+    return `
+    <tr id="row-${c.id}" onclick="openDrawer(${c.id})">
+      <td><div class="cb-wrap"><input type="checkbox" class="row-cb" onchange="onRowCheck(this,${c.id})" onclick="event.stopPropagation()"></div></td>
+      <td>
+        <div class="case-name-wrap">
+          <div>
+            <span class="case-tag ${typeMap[c.type]}">${typeLabel[c.type]}</span>
+            <div class="case-name">${c.name}</div>
+            <div class="case-desc">${c.desc}</div>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${c.catColor};display:inline-block;flex-shrink:0"></span>
+          <span style="font-size:13px">${c.category}</span>
+        </div>
+      </td>
+      <td>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar"><div class="progress-fill ${pfClass}" style="width:${c.status==='running'?'45':pct}%"></div></div>
+          <span class="progress-text">${c.status==='running'?'执行中':pct+'%'}</span>
+        </div>
+      </td>
+      <td><span class="status-badge ${statusMap[c.status]}">${statusLabel[c.status]}</span></td>
+      <td>${triggerHtml}</td>
+      <td><div class="time-cell"><div class="date">${c.lastRun}</div></div></td>
+      <td><div class="duration">⏱ ${c.duration}</div></td>
+      <td>
+        <div class="action-group" onclick="event.stopPropagation()">
+          <button class="action-btn view" title="查看详情" onclick="openDrawer(${c.id}); event.stopPropagation()">👁️</button>
+          <button class="action-btn run" title="立即运行" onclick="quickRun(${c.id},'${c.name}')">▶</button>
+          <button class="action-btn" title="定时" onclick="openModal('scheduleModal')">⏰</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// =========================================
+// 分类选择
+// =========================================
+function selectCategory(el, name) {
+  document.querySelectorAll('.category-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelector('.topbar-desc').textContent = `/ ${name === '全部' ? '全部业务' : name}`;
+  const filtered = name === '全部' ? cases : cases.filter(c => c.category === name);
+  renderTable(filtered);
+}
+
+function filterCategory(val) {
+  document.querySelectorAll('.category-item').forEach(item => {
+    const text = item.querySelector('.cat-name')?.textContent || '';
+    item.style.display = text.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
+  });
+}
+
+// =========================================
+// 状态筛选
+// =========================================
+let currentFilter = 'all';
+function setFilter(el, type) {
+  currentFilter = type;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  const filtered = type === 'all' ? cases : cases.filter(c => c.status === type);
+  renderTable(filtered);
+}
+
+// =========================================
+// 抽屉
+// =========================================
+let currentCaseId = null;
+function openDrawer(id) {
+  currentCaseId = id;
+  const c = cases.find(x => x.id === id);
+  if(!c) return;
+  document.getElementById('drawerTitle').textContent = c.name;
+  document.getElementById('runCaseName').textContent = c.name;
+  // 高亮行
+  document.querySelectorAll('.case-table tbody tr').forEach(r => r.classList.remove('selected'));
+  const row = document.getElementById('row-' + id);
+  if(row) row.classList.add('selected');
+  // 确保详情抽屉展开
+  const drawer = document.getElementById('detailDrawer');
+  const footer = document.querySelector('.drawer-footer');
+  const collapseBtn = document.getElementById('drawerCollapseBtn');
+  drawer.classList.remove('collapsed');
+  if (footer) footer.style.display = 'flex';
+  if (collapseBtn) collapseBtn.style.display = 'flex';
+  switchTab(null, 'overview');
+}
+
+function closeDrawer() {
+  const drawer = document.getElementById('detailDrawer');
+  const footer = document.querySelector('.drawer-footer');
+  const collapseBtn = document.getElementById('drawerCollapseBtn');
+  drawer.classList.add('collapsed');
+  if (footer) footer.style.display = 'none';
+  if (collapseBtn) collapseBtn.style.display = 'none';
+  setTimeout(() => {
+    document.querySelectorAll('.case-table tbody tr').forEach(r => r.classList.remove('selected'));
+    currentCaseId = null;
+  }, 300);
+}
+
+function switchTab(el, tab) {
+  if(el) {
+    document.querySelectorAll('.drawer-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
+  document.getElementById('tab-overview').style.display = tab === 'overview' ? '' : 'none';
+  document.getElementById('tab-log').style.display      = tab === 'log' ? '' : 'none';
+  document.getElementById('tab-history').style.display  = tab === 'history' ? '' : 'none';
+  if(tab === 'history') renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  list.innerHTML = historyData.map((h,i) => {
+    const cls = h.status === 'pass' ? 'status-pass' : 'status-fail';
+    const label = h.status === 'pass' ? '通过' : '失败';
+    return `
+    <div class="history-item">
+      <div class="history-num">#${historyData.length - i}</div>
+      <div class="history-info">
+        <div class="history-time">${h.time}</div>
+        <div class="history-dur">⏱ ${h.dur}</div>
+      </div>
+      <span class="status-badge ${cls}">${label}</span>
+    </div>`;
+  }).join('');
+}
+
+// =========================================
+// Modal 控制
+// =========================================
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function overlayClose(e, id) { if(e.target.id === id) closeModal(id); }
+
+// =========================================
+// Cron
+// =========================================
+function setCron(el, expr, desc) {
+  document.querySelectorAll('.quick-tag').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const parts = expr.split(' ');
+  document.getElementById('cron-min').value   = parts[0] || '*';
+  document.getElementById('cron-hour').value  = parts[1] || '*';
+  document.getElementById('cron-day').value   = parts[2] || '*';
+  document.getElementById('cron-month').value = parts[3] || '*';
+  document.getElementById('cron-week').value  = parts[4] || '*';
+  document.getElementById('cronDescBox').textContent = '💬 ' + desc;
+}
+
+function updateCronDesc() {
+  const min   = document.getElementById('cron-min').value;
+  const hour  = document.getElementById('cron-hour').value;
+  const day   = document.getElementById('cron-day').value;
+  const month = document.getElementById('cron-month').value;
+  const week  = document.getElementById('cron-week').value;
+  let desc = `${min} ${hour} ${day} ${month} ${week}`;
+  document.getElementById('cronDescBox').textContent = `💬 Cron: ${desc}`;
+  document.querySelectorAll('.quick-tag').forEach(t => t.classList.remove('active'));
+}
+
+function saveSchedule() {
+  closeModal('scheduleModal');
+  showToast('定时配置已保存 ✓', 'success');
+}
+
+// =========================================
+// 分类
+// =========================================
+let selectedColor = '#4F6EF7';
+let selectedIcon  = '💳';
+
+function pickColor(el) {
+  document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedColor = el.dataset.color;
+}
+
+function pickIcon(el, icon) {
+  document.querySelectorAll('#iconPicker .cat-act-btn').forEach(b => {
+    b.style.borderColor = 'var(--border)';
+    b.style.background  = 'transparent';
+  });
+  el.style.borderColor = 'var(--color-primary)';
+  el.style.background  = 'var(--color-primary-light)';
+  selectedIcon = icon;
+}
+
+function addCategory() {
+  const name = document.getElementById('catName').value.trim();
+  if(!name) { showToast('请输入分类名称', 'warning'); return; }
+
+  const list = document.getElementById('categoryList');
+  const div  = document.createElement('div');
+  div.className = 'category-item';
+  div.innerHTML = `
+    <div class="cat-dot" style="background:${selectedColor}"></div>
+    <div class="cat-name">${selectedIcon} ${name}</div>
+    <div class="cat-count">0</div>
+    <div class="cat-actions">
+      <button class="cat-act-btn" onclick="event.stopPropagation();openModal('categoryModal')" title="编辑">✏️</button>
+      <button class="cat-act-btn" onclick="event.stopPropagation();deleteCategory(this)" title="删除">🗑️</button>
+    </div>`;
+  div.onclick = () => selectCategory(div, name);
+  list.appendChild(div);
+
+  document.getElementById('catName').value = '';
+  closeModal('categoryModal');
+  showToast(`分类「${name}」已创建`, 'success');
+}
+
+function deleteCategory(btn) {
+  const item = btn.closest('.category-item');
+  const name = item.querySelector('.cat-name').textContent.trim();
+  item.style.opacity = '0';
+  item.style.transform = 'translateX(-20px)';
+  item.style.transition = 'all 0.25s ease';
+  setTimeout(() => item.remove(), 260);
+  showToast(`已删除分类「${name}」`, 'info');
+}
+
+// =========================================
+// 用例操作
+// =========================================
+function addCase() {
+  const name = document.getElementById('newCaseName').value.trim();
+  if(!name) { showToast('请输入用例名称', 'warning'); return; }
+  closeModal('addCaseModal');
+  showToast(`用例「${name}」已创建`, 'success');
+  document.getElementById('newCaseName').value = '';
+}
+
+function editCurrentCase() {
+  if (!currentCaseId) {
+    showToast('请先选择一个用例', 'warning');
+    return;
+  }
+  const c = cases.find(x => x.id === currentCaseId);
+  if (!c) return;
+  
+  // 将模态框标题改为编辑模式
+  document.querySelector('#addCaseModal .modal-title').textContent = '编辑测试用例';
+  document.querySelector('#addCaseModal .modal-desc').textContent = '修改测试用例配置信息';
+  document.getElementById('addCaseSubmit').innerHTML = '💾 保存修改';
+  document.getElementById('newCaseName').value = c.name;
+  
+  // 修改提交函数为保存模式
+  const submitBtn = document.getElementById('addCaseSubmit');
+  const originalClick = submitBtn.onclick;
+  submitBtn.onclick = function() {
+    c.name = document.getElementById('newCaseName').value.trim();
+    if (!c.name) { showToast('请输入用例名称', 'warning'); return; }
+    closeModal('addCaseModal');
+    showToast('用例已更新', 'success');
+    renderTable(cases);
+    
+    // 恢复原始设置
+    submitBtn.onclick = addCase;
+    submitBtn.innerHTML = '✚ 创建用例';
+    document.querySelector('#addCaseModal .modal-title').textContent = '新建测试用例';
+    document.querySelector('#addCaseModal .modal-desc').textContent = '配置测试用例基本信息与执行参数';
+    document.getElementById('newCaseName').value = '';
+  };
+  
+  openModal('addCaseModal');
+}
+
+function quickRun(id, name) {
+  document.getElementById('runCaseName').textContent = name;
+  openModal('runModal');
+}
+
+function confirmRun() {
+  closeModal('runModal');
+  showToast('已触发运行，稍后查看结果 ⚡', 'success');
+  // 模拟状态变化
+  const c = cases.find(x => x.id === currentCaseId);
+  if(c) { c.status = 'running'; renderTable(cases); }
+  setTimeout(() => {
+    const c2 = cases.find(x => x.id === currentCaseId);
+    if(c2 && c2.status === 'running') {
+      c2.status = 'pass'; c2.lastRun = '刚刚';
+      renderTable(cases);
+      showToast('执行完成，全部通过 ✅', 'success');
+    }
+  }, 4000);
+}
+
+function runAll() {
+  showToast('已触发全量运行（142个用例）', 'info');
+}
+
+function deleteCaseRow(id) {
+  const row = document.getElementById('row-' + id);
+  if(row) {
+    row.style.opacity = '0';
+    row.style.transition = 'opacity 0.2s ease';
+    setTimeout(() => { row.remove(); }, 220);
+  }
+  const idx = cases.findIndex(c => c.id === id);
+  if(idx > -1) cases.splice(idx, 1);
+  showToast('已删除该用例', 'info');
+}
+
+function deleteCurrentCase() {
+  if (!currentCaseId) {
+    showToast('请先选择一个用例', 'warning');
+    return;
+  }
+  if (confirm(`确定要删除这个测试用例吗？此操作不可撤销。`)) {
+    deleteCaseRow(currentCaseId);
+    closeDrawer();
+  }
+}
+
+// =========================================
+// 多选
+// =========================================
+let selectedIds = new Set();
+
+function toggleAll(cb) {
+  document.querySelectorAll('.row-cb').forEach(c => {
+    c.checked = cb.checked;
+    const id = parseInt(c.closest('tr').id.replace('row-',''));
+    cb.checked ? selectedIds.add(id) : selectedIds.delete(id);
+  });
+  updateBulkBar();
+}
+
+function onRowCheck(cb, id) {
+  cb.checked ? selectedIds.add(id) : selectedIds.delete(id);
+  document.getElementById('checkAll').checked = selectedIds.size === cases.length;
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  document.getElementById('bulkCount').textContent = selectedIds.size;
+  bar.classList.toggle('show', selectedIds.size > 0);
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.row-cb').forEach(c => c.checked = false);
+  document.getElementById('checkAll').checked = false;
+  updateBulkBar();
+}
+
+function bulkRun() {
+  showToast(`已批量触发 ${selectedIds.size} 个用例运行`, 'success');
+  clearSelection();
+}
+
+function bulkDelete() {
+  selectedIds.forEach(id => deleteCaseRow(id));
+  selectedIds.clear();
+  updateBulkBar();
+}
+
+// =========================================
+// Toast
+// =========================================
+function showToast(msg, type = 'info') {
+  const icons = { success:'✅', error:'❌', info:'💬', warning:'⚠️' };
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type]}</span><span class="toast-msg">${msg}</span><button class="toast-close" onclick="this.parentElement.remove()">×</button>`;
+  container.appendChild(toast);
+  requestAnimationFrame(() => { requestAnimationFrame(() => toast.classList.add('show')); });
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 320);
+  }, 3000);
+}
+
+// =========================================
+// 执行模式选择
+// =========================================
+function selectExecOpt(el) {
+  document.querySelectorAll('.exec-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// =========================================
+// 初始化
+// =========================================
+renderTable(cases);
+// 初始状态下隐藏抽屉底部操作栏
+document.addEventListener('DOMContentLoaded', function() {
+  const footer = document.querySelector('.drawer-footer');
+  if (footer) footer.style.display = 'none';
+});
+</script>
+</body>
+</html>
