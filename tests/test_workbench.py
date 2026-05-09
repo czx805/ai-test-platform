@@ -160,14 +160,12 @@ def test_navigate_multiple_pages(workbench_page):
 # ══════════════════════════════════════════════════════════════
 
 def test_workbench_refresh(workbench_page):
-    """工作台刷新后应保持在工作台"""
+    """工作台刷新后应保持在工作台（修复：弃用 networkidle，改等侧边栏渲染完成）"""
     wp = workbench_page
+    # reload 后只等 DOM 就绪，不等 networkidle（SPA 持续请求永远等不到）
     wp.page.reload(wait_until="domcontentloaded")
-    try:
-        wp.page.wait_for_load_state("networkidle", timeout=15000)
-    except Exception:
-        pass
-    wp.page.wait_for_timeout(2000)
+    # 等侧边栏导航链接出现 = SPA 渲染完成
+    wp.page.wait_for_selector("a[href^='#/']", timeout=15000)
     wp.screenshot("logs/wb_refresh.png")
 
     assert wp.is_at_workbench(), f"刷新后离开工作台: {wp.url}"
