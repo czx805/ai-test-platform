@@ -40,6 +40,7 @@ def test_login_success(login_page):
 # ══════════════════════════════════════════════════════════════
 #  登录失败（数据驱动 — 一条代码跑全部失败场景）
 # ══════════════════════════════════════════════════════════════
+@pytest.mark.timeout(30)
 @pytest.mark.parametrize("case", LOGIN_FAIL_CASES, ids=[c["id"] for c in LOGIN_FAIL_CASES])
 def test_login_fail(login_page, case):
     """数据驱动: {desc} -> 应停留在登录页""".format(**case)

@@ -344,7 +344,7 @@ def workbench_page(logged_in_context):
         page.wait_for_load_state("networkidle", timeout=15000)
     except Exception:
         pass
-    page.wait_for_timeout(1000)
+    page.wait_for_selector("a[href^='#/']")
 
     wp = WorkbenchPage(page)
     yield wp
