@@ -242,19 +242,33 @@ def _should_run_headless():
     return False
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def browser():
-    """会话级浏览器（所有测试共享一个实例，最高效）"""
+    """
+    函数级浏览器（每个测试用例独占一个 Chromium 实例，完全隔离。
+
+    根因：session-scoped browser + pytest-xdist 多 worker 并发创建 context =
+    Chromium IPC 竞争，导致 worker 进程崩溃 ("Not properly terminated")。
+    改为 function-scope 后，每个 worker 的每个测试使用独立浏览器，不存在共享。
+
+    关键：每个测试后必须完整关闭 Playwright 实例（pw.stop()），否则 Windows
+    ProactorEventLoop 背景线程的 is_running() 会保持 True，导致后续测试报错
+    "asyncio loop inside"。在子线程执行 stop() 可避免 C 扩展 teardown hang。
+    """
     headless = _should_run_headless()
     print(f"[conftest] Browser headless={headless}")
     pw = sync_playwright().start()
-    browser = pw.chromium.launch(headless=headless)
-    yield browser
-
-    # teardown 交给外部进程清理（见 auto_sync.py）
-    # Playwright C 扩展线程无法被 pytest-timeout 中断，
-    # 所以这里不做任何清理，让 pytest 进程自然退出或被外部 SIGKILL
-    # 浏览器资源（chromium 进程）会在进程退出时被 OS 回收
+    chromium = pw.chromium.launch(headless=headless)
+    yield chromium
+    # 函数级 teardown：正常关闭 Playwright
+    try:
+        chromium.close()
+    except Exception:
+        pass
+    try:
+        pw.stop()
+    except Exception:
+        pass
 
 
 # ── 登录测试用（function scope，隔离 cookie）─────────────────────
@@ -264,9 +278,10 @@ def context(browser):
     """函数级 Context（每个测试用例独立上下文，cookie 不互相污染）"""
     ctx = browser.new_context(viewport={"width": 1280, "height": 720})
     yield ctx
-    # 不调用 ctx.close() — Playwright 连接关闭会触发 C 扩展线程 hang，
-    # 导致后续所有测试的 Playwright 操作超时。
-    # OS 会在 pytest 进程退出时自动回收这些资源。
+    try:
+        ctx.close()
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="function")
@@ -274,7 +289,10 @@ def page(context):
     """函数级 Page（每个测试用例独占一页）"""
     p = context.new_page()
     yield p
-    # 不调用 p.close()，同上
+    try:
+        p.close()
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="function")
@@ -303,12 +321,14 @@ def _do_login(lp):
 
 # ── 工作台测试用（module scope，共享已登录 context）─────────────────────
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def logged_in_context(browser):
     """
-    模块级已登录 Context。
-    登录一次，保存 cookie，整个 test_workbench.py 共享。
-    大幅减少重复登录耗时。
+    函数级已登录 Context（依赖 function-scoped browser，每个测试完全隔离）。
+
+    架构：browser(function) -> context(function) -> page(function)
+    每个测试用例拥有独立的 Chromium 实例，完全不存在跨测试共享。
+    login cookie 存在 context 中，page.close() 后 context 保持 cookie。
     """
     ctx = browser.new_context(viewport={"width": 1280, "height": 720})
     page = ctx.new_page()
