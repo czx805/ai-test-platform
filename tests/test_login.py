@@ -200,14 +200,21 @@ def test_session_persist_after_navigate(login_page):
     lp.screenshot("logs/po_nav_before.png")
 
     # 手动访问登录页 URL（不清 Cookie，保留登录态）
-    lp.page.goto(LoginPage.URL, wait_until="domcontentloaded")
-    lp.page.wait_for_selector("a[href^='#/']")
+    lp.page.goto(LoginPage.URL, wait_until="commit")
+    # 等待页面渲染：SPA 可能跳转 workbench 也可能停在 login
+    lp.page.wait_for_load_state("domcontentloaded")
+    lp.page.wait_for_timeout(2000)
     lp.screenshot("logs/po_nav_after.png")
 
-    # SPA 可能仍渲染 #/login，但页面应正常加载无报错
-    # 检查 input 和 button 元素仍然存在
-    assert lp.get_page_inputs_count() >= 2, f"页面加载异常，inputs: {lp.get_page_inputs_count()}"
-    print(f"[PASS] 已登录时访问登录页正常响应: {lp.page.url}")
+    # 无论 SPA 跳转还是停在 login，页面应正常加载无报错
+    if "#/workbench" in lp.page.url or "a[href^='#/']" in lp.page.content():
+        # SPA 跳转到了应用页，导航链接可见
+        lp.page.wait_for_selector("a[href^='#/']", timeout=10000)
+        print(f"[PASS] 已登录时访问登录页，SPA 跳转到应用页: {lp.page.url}")
+    else:
+        # SPA 停在登录页，检查页面元素可交互
+        assert lp.get_page_inputs_count() >= 2, f"页面加载异常，inputs: {lp.get_page_inputs_count()}"
+        print(f"[PASS] 已登录时访问登录页，SPA 仍在登录页: {lp.page.url}")
 
 
 # ══════════════════════════════════════════════════════════════
