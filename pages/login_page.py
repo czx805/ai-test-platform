@@ -35,11 +35,23 @@ class LoginPage:
         - clear_cookies=True  （默认）每次访问都清 Cookie，从干净状态开始
         - clear_cookies=False  保留当前 context 的 Cookie，用于测试 session 持久化
         """
+        import time as t
+        print(f"[{t.strftime('%H:%M:%S')}] goto: start, clear_cookies={clear_cookies}", flush=True)
+        # 添加微小延迟，避免并行时的竞争条件
+        self.page.wait_for_timeout(100)
+        print(f"[{t.strftime('%H:%M:%S')}] goto: delay done, clearing cookies if needed", flush=True)
         if clear_cookies:
             self.page.context.clear_cookies()
+        print(f"[{t.strftime('%H:%M:%S')}] goto: navigating to {self.URL}", flush=True)
         self.page.goto(self.URL, wait_until="domcontentloaded")
-        self._safe_networkidle(self.page)
-        self.page.wait_for_timeout(2000)
+        print(f"[{t.strftime('%H:%M:%S')}] goto: page loaded (domcontentloaded), waiting for input field", flush=True)
+        # 等待具体元素出现，代替 networkidle
+        try:
+            self.page.wait_for_selector("input", timeout=10000)
+            print(f"[{t.strftime('%H:%M:%S')}] goto: input field found", flush=True)
+        except Exception as e:
+            print(f"[{t.strftime('%H:%M:%S')}] goto: input field not found: {e}", flush=True)
+        print(f"[{t.strftime('%H:%M:%S')}] goto: done", flush=True)
 
     def fill_phone(self, phone: str):
         """填写手机号"""
@@ -113,15 +125,18 @@ class LoginPage:
 
     def submit(self):
         """提交登录，等待 URL 变化（跳离 /login 表示登录成功）。最多等 15 秒。"""
+        import time as t
+        print(f"[{t.strftime('%H:%M:%S')}] submit: pressing Enter on code input", flush=True)
         self.page.locator("input").nth(1).press("Enter")
-        # 用 Playwright wait_for_url 代替 time.sleep，pytest-timeout 可以中断。
-        # !#/login 不是有效否定语法，改用 JS 判断：等待 URL 不再包含 #/login。
+        print(f"[{t.strftime('%H:%M:%S')}] submit: waiting for URL change (up to 15s)", flush=True)
         try:
             self.page.wait_for_function(
                 "() => !window.location.hash.includes('#/login')",
                 timeout=15000,
             )
+            print(f"[{t.strftime('%H:%M:%S')}] submit: URL changed (login success)", flush=True)
         except Exception:
+            print(f"[{t.strftime('%H:%M:%S')}] submit: timeout (login failed, still on login page)", flush=True)
             # 超时说明仍在 login 页（登录失败），继续往下走
             pass
 
@@ -135,15 +150,22 @@ class LoginPage:
         3. 再点一次"进入该单位"（Modal 关掉后可能露出）
         4. 再关一次 Modal
         """
+        import time as t
+        print(f"[{t.strftime('%H:%M:%S')}] handle_after_submit: start", flush=True)
         # 1. 先尝试点按钮
+        print(f"[{t.strftime('%H:%M:%S')}] handle_after_submit: try click unit button (1st)", flush=True)
         self._try_click_unit_button()
 
         # 2. 关闭 Modal（最多两轮）
+        print(f"[{t.strftime('%H:%M:%S')}] handle_after_submit: dismiss modal (1st)", flush=True)
         self._dismiss_modal()
+        print(f"[{t.strftime('%H:%M:%S')}] handle_after_submit: dismiss modal (2nd)", flush=True)
         self._dismiss_modal()
 
         # 3. Modal 关掉后，再次尝试点"进入该单位"
+        print(f"[{t.strftime('%H:%M:%S')}] handle_after_submit: try click unit button (2nd)", flush=True)
         self._try_click_unit_button()
+        print(f"[{t.strftime('%H:%M:%S')}] handle_after_submit: done", flush=True)
 
     def _try_click_unit_button(self):
         """尝试点击'进入该单位'按钮（force，覆盖 Modal 遮挡）"""
