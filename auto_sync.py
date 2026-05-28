@@ -84,7 +84,7 @@ def run_pytest(timeout=1200):
     log(f"[run_pytest] timeout={timeout}s")
 
     py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
-    cmd = f'"{py}" -m pytest tests/ -v --tb=short --timeout=120 -n 3 --dist=loadscope'
+    cmd = f'"{py}" -m pytest tests/ -v --tb=short --timeout=120 -n 1'
     log(f"[run_pytest] cmd: {cmd}")
 
     proc = subprocess.Popen(
@@ -287,7 +287,7 @@ def main():
     log("=" * 60)
 
     # 运行 pytest（20分钟超时）
-    rc, out, killed = run_pytest(timeout=1200)
+    rc, out, killed = run_pytest(timeout=1800)
     log(f"pytest done: rc={rc}, killed={killed}")
 
     # 解析结果
