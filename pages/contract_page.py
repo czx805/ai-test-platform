@@ -73,7 +73,7 @@ class ContractPage:
             # 表格超时，截图留证，帮助诊断是渲染慢还是页面结构变了
             self.page.screenshot(path="logs/contract_table_timeout.png")
             raise
-        self.page.wait_for_timeout(1000)
+        self.page.wait_for_timeout(300)
 
     def screenshot(self, path: str):
         self.page.screenshot(path=path)
@@ -104,27 +104,30 @@ class ContractPage:
         expand_btn = self.page.locator('.ant-pro-query-filter-collapse-button, a:has-text("展开")')
         if expand_btn.count() > 0:
             expand_btn.first.click(force=True)
-            self.page.wait_for_timeout(1000)
+            self.page.wait_for_timeout(300)
 
     def fill_search(self, keyword: str, value: str):
         self.expand_filters()
-        self.page.wait_for_timeout(500)
         inp = self.page.locator("#contractNumber")
         if inp.count() == 0:
             raise AssertionError("未找到 #contractNumber 输入框")
         inp.first.fill(value, force=True)
-        self.page.wait_for_timeout(300)
 
     def click_reset(self):
         btns = self.page.locator("button")
         btns.nth(2).click(force=True)
-        self.page.wait_for_timeout(1000)
+        try:
+            self.page.wait_for_selector(".ant-table-tbody tr", timeout=3000)
+        except Exception:
+            pass
 
     def click_query(self):
         btns = self.page.locator("button")
         btns.nth(3).click(force=True)
-        _safe_networkidle(self.page)
-        self.page.wait_for_timeout(2000)
+        try:
+            self.page.wait_for_selector(".ant-table-tbody tr", timeout=5000)
+        except Exception:
+            pass
 
     # ── 表格 ─────────────────────────────────────────────────
 
@@ -142,8 +145,10 @@ class ContractPage:
         link = self.page.locator(f'.ant-pagination-item a:text-is("{page_num}")')
         if link.count() > 0:
             link.first.click(force=True)
-            _safe_networkidle(self.page)
-            self.page.wait_for_timeout(1500)
+            try:
+                self.page.wait_for_selector(".ant-table-tbody tr", timeout=5000)
+            except Exception:
+                pass
         else:
             raise AssertionError(f"未找到页码 {page_num}")
 
@@ -197,7 +202,10 @@ class ContractPage:
         if "新增" not in btn_text and "合同" not in btn_text:
             raise AssertionError(f"button[5] 不是新增合同按钮（当前文本: {btn_text}）")
         btn.click(force=True)
-        self.page.wait_for_timeout(2000)
+        try:
+            self.page.wait_for_selector(".ant-modal", timeout=3000)
+        except Exception:
+            pass
 
     def is_modal_visible(self) -> bool:
         modal = self.page.locator(".ant-modal")
@@ -227,7 +235,6 @@ class ContractPage:
             # 尝试按 label 定位
             inp = container.locator(".ant-form-item:has-text('合同名称') input")
         inp.first.fill(name, force=True)
-        self.page.wait_for_timeout(300)
 
     def fill_contract_amount(self, amount: str, in_modal: bool = True):
         """填写合同金额"""
@@ -236,7 +243,6 @@ class ContractPage:
         if inp.count() == 0:
             inp = container.locator(".ant-form-item:has-text('合同金额') input")
         inp.first.fill(amount, force=True)
-        self.page.wait_for_timeout(300)
 
     def select_dropdown_by_label(self, label: str, option_text: str, in_modal: bool = True):
         """根据 label 选择下拉选项"""
@@ -246,13 +252,11 @@ class ContractPage:
         if select.count() == 0:
             raise AssertionError(f"未找到 {label} 对应的下拉框")
         select.first.click(force=True)
-        self.page.wait_for_timeout(500)
         # 点击下拉选项
         option = self.page.locator(f".ant-select-dropdown:visible .ant-select-item:has-text('{option_text}')")
         if option.count() == 0:
             raise AssertionError(f"未找到下拉选项: {option_text}")
         option.first.click(force=True)
-        self.page.wait_for_timeout(500)
 
     def fill_contract_date(self, date_str: str, in_modal: bool = True):
         """填写合同签订日期 (YYYY-MM-DD)"""
@@ -261,14 +265,9 @@ class ContractPage:
         if picker.count() == 0:
             picker = container.locator(".ant-form-item:has-text('合同签订日期') .ant-picker")
         picker.first.click(force=True)
-        self.page.wait_for_timeout(500)
-        # 直接输入日期
         inp = picker.first.locator("input")
         inp.fill(date_str, force=True)
-        self.page.wait_for_timeout(300)
-        # 按 Enter 确认
         inp.press("Enter")
-        self.page.wait_for_timeout(500)
 
     def fill_contract_period(self, start_date: str, end_date: str, in_modal: bool = True):
         """填写合同期限（日期范围）"""
@@ -277,16 +276,11 @@ class ContractPage:
         if picker.count() == 0:
             picker = container.locator(".ant-form-item:has-text('合同期限') .ant-picker-range")
         picker.first.click(force=True)
-        self.page.wait_for_timeout(500)
-        # 输入开始日期
         inputs = picker.first.locator("input").all()
         if len(inputs) >= 2:
             inputs[0].fill(start_date, force=True)
-            self.page.wait_for_timeout(300)
             inputs[1].fill(end_date, force=True)
-            self.page.wait_for_timeout(300)
             inputs[1].press("Enter")
-        self.page.wait_for_timeout(500)
 
     def fill_contract_remark(self, remark: str, in_modal: bool = True):
         """填写备注"""
@@ -296,7 +290,6 @@ class ContractPage:
         if inp.count() == 0:
             return
         inp.first.fill(remark, force=True)
-        self.page.wait_for_timeout(300)
 
     # ── 弹窗操作 ─────────────────────────────────────────────
 
@@ -306,7 +299,6 @@ class ContractPage:
             txt = btns.nth(i).inner_text().strip()
             if text_keyword in txt:
                 btns.nth(i).click(force=True)
-                self.page.wait_for_timeout(1000)
                 return
         raise AssertionError(f"未找到弹窗中包含 '{text_keyword}' 的按钮")
 
@@ -325,7 +317,10 @@ class ContractPage:
             close_btn = self.page.locator(".ant-modal-close")
             if close_btn.count() > 0:
                 close_btn.first.click(force=True)
-                self.page.wait_for_timeout(1000)
+                try:
+                    self.page.wait_for_selector(".ant-modal", state="hidden", timeout=3000)
+                except Exception:
+                    pass
                 return
         except Exception:
             pass
@@ -342,7 +337,10 @@ class ContractPage:
         if detail_span.count() == 0:
             raise AssertionError(f"第 {row_index} 行未找到查看详情按钮")
         detail_span.first.click(force=True)
-        self.page.wait_for_timeout(2000)
+        try:
+            self.page.wait_for_selector(".ant-drawer", timeout=5000)
+        except Exception:
+            pass
 
     def is_drawer_open(self) -> bool:
         return self.is_drawer_visible()
@@ -351,7 +349,10 @@ class ContractPage:
         close_btn = self.page.locator(".ant-drawer-close")
         if close_btn.count() > 0:
             close_btn.first.click(force=True)
-            self.page.wait_for_timeout(1000)
+            try:
+                self.page.wait_for_selector(".ant-drawer", state="hidden", timeout=3000)
+            except Exception:
+                pass
 
     # ── 编辑合同 ─────────────────────────────────────────────
 
@@ -363,7 +364,10 @@ class ContractPage:
         if edit_btn.count() == 0:
             raise AssertionError("未找到编辑按钮")
         edit_btn.first.click(force=True)
-        self.page.wait_for_timeout(2000)
+        try:
+            self.page.wait_for_selector("button:has-text('保 存')", timeout=3000)
+        except Exception:
+            pass
 
     # ── 删除合同 ─────────────────────────────────────────────
 
@@ -375,7 +379,10 @@ class ContractPage:
         if delete_btn.count() == 0:
             raise AssertionError("未找到删除按钮")
         delete_btn.first.click(force=True)
-        self.page.wait_for_timeout(1500)
+        try:
+            self.page.wait_for_selector(".ant-popconfirm, .ant-modal-confirm", timeout=3000)
+        except Exception:
+            pass
 
     def confirm_delete(self, confirm: bool = True):
         """确认或取消删除"""
@@ -383,12 +390,18 @@ class ContractPage:
             confirm_btn = self.page.locator(".ant-popconfirm .ant-btn-primary, .ant-modal-confirm .ant-btn-primary")
             if confirm_btn.count() > 0:
                 confirm_btn.first.click(force=True)
-                self.page.wait_for_timeout(2000)
+                try:
+                    self.page.wait_for_selector(".ant-drawer", state="hidden", timeout=5000)
+                except Exception:
+                    pass
         else:
             cancel_btn = self.page.locator(".ant-popconfirm .ant-btn:has-text('取消'), .ant-modal-confirm .ant-btn:has-text('取消')")
             if cancel_btn.count() > 0:
                 cancel_btn.first.click(force=True)
-                self.page.wait_for_timeout(1000)
+                try:
+                    self.page.wait_for_selector(".ant-popconfirm, .ant-modal-confirm", state="hidden", timeout=3000)
+                except Exception:
+                    pass
 
     def is_popconfirm_visible(self) -> bool:
         popconfirm = self.page.locator(".ant-popconfirm:visible, .ant-modal-confirm:visible")
