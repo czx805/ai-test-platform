@@ -76,7 +76,7 @@ def parse_pytest_output(out):
     return passed, failed, total
 
 
-def run_pytest(timeout=10800):
+def run_pytest(timeout=1200):
     """
     运行 pytest，支持硬超时（超时后强制 kill 并发通知）
     返回: (rc, out, killed_flag)
@@ -84,7 +84,7 @@ def run_pytest(timeout=10800):
     log(f"[run_pytest] timeout={timeout}s")
 
     py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
-    cmd = f'"{py}" -m pytest tests/ -v --tb=short -n 1'
+    cmd = f'"{py}" -m pytest tests/ -v --tb=short -n auto'
     log(f"[run_pytest] cmd: {cmd}")
 
     proc = subprocess.Popen(
@@ -287,7 +287,7 @@ def main():
     log("=" * 60)
 
     # 运行 pytest（20分钟超时）
-    rc, out, killed = run_pytest(timeout=10800)
+    rc, out, killed = run_pytest(timeout=1200)
     log(f"pytest done: rc={rc}, killed={killed}")
 
     # 解析结果
