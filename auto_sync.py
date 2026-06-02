@@ -81,14 +81,20 @@ def run_pytest(timeout=1200):
     运行 pytest，支持硬超时（超时后强制 kill 并发通知）
     返回: (rc, out, killed_flag)
     """
+    # 强制切换到 REPO_DIR
+    original_cwd = os.getcwd()
+    os.chdir(REPO_DIR)
+    log(f"[run_pytest] cwd: {os.getcwd()}")
     log(f"[run_pytest] timeout={timeout}s")
 
     py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
     cmd = f'"{py}" -m pytest tests/ -v --tb=short -n auto'
     log(f"[run_pytest] cmd: {cmd}")
 
+    import shlex
+    cmd_list = shlex.split(cmd)
     proc = subprocess.Popen(
-        cmd, cwd=REPO_DIR, shell=True,
+        cmd_list, cwd=REPO_DIR, shell=False,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", bufsize=1,
     )
@@ -124,6 +130,7 @@ def run_pytest(timeout=1200):
     timer_active[0] = False
     out = "".join(lines)
 
+    os.chdir(original_cwd)  # 恢复原目录
     log(f"[run_pytest] rc={proc.returncode}, killed={killed[0]}")
     return proc.returncode, out, killed[0]
 
