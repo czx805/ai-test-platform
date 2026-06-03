@@ -2,6 +2,7 @@
 ContractPage — 合同管理页面对象（支持 CRUD 操作）
 URL: https://test6688.jh119.cn/business/#/contract/list
 """
+import os
 import time
 from playwright.sync_api import Page, Locator
 
@@ -20,7 +21,13 @@ def _safe_networkidle(page, timeout=20000):
 class ContractPage:
     """合同管理页面对象"""
 
-    URL = "https://test6688.jh119.cn/business/#/contract/list"
+    # 环境变量 TEST_ENV: test=测试环境, pre=预发布环境, 默认=test
+    ENV = os.environ.get("TEST_ENV", "test")
+    if ENV == "pre":
+        BASE_URL = "https://pre-cloud.jingfire.com"
+    else:
+        BASE_URL = "https://test6688.jh119.cn"
+    URL = f"{BASE_URL}/business/#/contract/list"
 
     # 顶部统计卡片顺序（按索引映射）
     STAT_MAPPING = {

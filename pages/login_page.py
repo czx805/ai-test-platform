@@ -2,6 +2,7 @@
 LoginPage — 登录页面对象
 封装所有登录页的 UI 交互，与测试用例解耦。
 """
+import os
 import time
 from playwright.sync_api import Page, Locator
 
@@ -10,7 +11,13 @@ class LoginPage:
     """登录页面对象（Page Object）"""
 
     # ── 页面地址 ──────────────────────────────────────────────
-    URL = "https://test6688.jh119.cn/business/#/login"
+    # 环境变量 TEST_ENV: test=测试环境, pre=预发布环境, 默认=test
+    ENV = os.environ.get("TEST_ENV", "test")
+    if ENV == "pre":
+        BASE_URL = "https://pre-cloud.jingfire.com"
+    else:
+        BASE_URL = "https://test6688.jh119.cn"
+    URL = f"{BASE_URL}/business/#/login"
 
     # ── 元素定位器 ──────────────────────────────────────────────
     def __init__(self, page: Page):
