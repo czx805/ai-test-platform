@@ -358,13 +358,22 @@ def workbench_page(logged_in_context):
     """
     from pages.workbench_page import WorkbenchPage
 
+    # 工作台 URL（支持多环境）
+    import os as _os
+    _env = _os.environ.get("TEST_ENV", "test")
+    if _env == "pre":
+        _wb_base = "https://pre-cloud.jingfire.com"
+        _nav_timeout = 60000  # 预发布环境需要更长的等待时间
+    else:
+        _wb_base = "https://test6688.jh119.cn"
+        _nav_timeout = 30000
     page = logged_in_context.new_page()
-    page.goto("https://test6688.jh119.cn/business/#/workbench", wait_until="domcontentloaded")
+    page.goto(f"{_wb_base}/business/#/workbench", wait_until="domcontentloaded")
     try:
         page.wait_for_load_state("networkidle", timeout=15000)
     except Exception:
         pass
-    page.wait_for_selector("a[href^='#/']")
+    page.wait_for_selector("a[href^='#/']", timeout=_nav_timeout)
 
     wp = WorkbenchPage(page)
     yield wp
