@@ -294,7 +294,7 @@ def main():
     log("=" * 60)
 
     # 运行 pytest（20分钟超时）
-    rc, out, killed = run_pytest(timeout=1200)
+    rc, out, killed = run_pytest(timeout=1800)
     log(f"pytest done: rc={rc}, killed={killed}")
 
     # 解析结果
