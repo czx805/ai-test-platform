@@ -9,6 +9,9 @@ auto_sync.py -- AI测试平台自动同步脚本
 """
 import subprocess, sys, os, json, re, datetime, hmac, hashlib, base64, urllib.parse, urllib.request, time, threading
 
+# Force test environment (not pre-release)
+os.environ["TEST_ENV"] = "test"
+
 # Fix Windows GBK stdout
 if sys.stdout.encoding != "utf-8":
     sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
