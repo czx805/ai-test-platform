@@ -91,7 +91,7 @@ def run_pytest(timeout=3600):
     log(f"[run_pytest] timeout={timeout}s")
 
     py = VENV_PY if os.path.exists(VENV_PY) else sys.executable
-    cmd = f'"{py}" -m pytest tests/ -v --tb=short -n 4'
+    cmd = f'"{py}" -m pytest tests/ -v --tb=short -n 2'
     log(f"[run_pytest] cmd: {cmd}")
 
     import shlex
