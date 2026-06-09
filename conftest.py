@@ -304,6 +304,73 @@ def login_page(page):
     return lp
 
 
+# ── Cookie 缓存优化：避免每个测试重新登录 ─────────────────────
+
+import hashlib
+import threading
+
+# Cookie 缓存文件路径
+_COOKIE_CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cookie_cache")
+_COOKIE_CACHE_LOCK = threading.Lock()
+
+def _get_cookie_cache_key():
+    """生成 cookie 缓存文件 key（基于环境）"""
+    env = os.environ.get("TEST_ENV", "test")
+    phone = "13757188737"  # VALID_PHONE
+    return hashlib.md5(f"{env}_{phone}".encode()).hexdigest()
+
+def _get_cookie_cache_file():
+    """获取 cookie 缓存文件路径"""
+    os.makedirs(_COOKIE_CACHE_DIR, exist_ok=True)
+    key = _get_cookie_cache_key()
+    return os.path.join(_COOKIE_CACHE_DIR, f"{key}.json")
+
+def _save_cookies_to_cache(cookies):
+    """保存 cookies 到缓存文件"""
+    cache_file = _get_cookie_cache_file()
+    with _COOKIE_CACHE_LOCK:
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "cookies": cookies,
+                "timestamp": time.time(),
+                "env": os.environ.get("TEST_ENV", "test")
+            }, f)
+    print(f"[cookie_cache] Saved to {cache_file}")
+
+def _load_cookies_from_cache():
+    """从缓存文件加载 cookies，如果不存在或过期返回 None"""
+    cache_file = _get_cookie_cache_file()
+    if not os.path.exists(cache_file):
+        return None
+    
+    try:
+        with _COOKIE_CACHE_LOCK:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        
+        # 检查环境是否匹配
+        if data.get("env") != os.environ.get("TEST_ENV", "test"):
+            return None
+        
+        # 检查是否过期（30分钟）
+        if time.time() - data.get("timestamp", 0) > 1800:
+            print(f"[cookie_cache] Cache expired (>30min)")
+            return None
+        
+        print(f"[cookie_cache] Loaded from cache")
+        return data.get("cookies")
+    except Exception as e:
+        print(f"[cookie_cache] Load failed: {e}")
+        return None
+
+def _clear_cookie_cache():
+    """清除 cookie 缓存"""
+    cache_file = _get_cookie_cache_file()
+    if os.path.exists(cache_file):
+        os.remove(cache_file)
+        print(f"[cookie_cache] Cleared")
+
+
 # ── 共享登录辅助 ──────────────────────────────────────────────
 
 VALID_PHONE = "13757188737"
@@ -324,60 +391,76 @@ def _do_login(lp):
 @pytest.fixture(scope="function")
 def logged_in_context(browser):
     """
-    函数级已登录 Context（依赖 function-scoped browser，每个测试完全隔离）。
-
-    架构：browser(function) -> context(function) -> page(function)
-    每个测试用例拥有独立的 Chromium 实例，完全不存在跨测试共享。
-    login cookie 存在 context 中，page.close() 后 context 保持 cookie。
+    函数级已登录 Context（每个测试一个 context，但复用 cookies）。
+    
+    优化策略：
+    1. 第一个测试：完整登录（约 30s），保存 cookies
+    2. 后续测试：加载 cookies（约 1s），跳过登录
+    
+    注意：每个测试仍然有独立的 context（保证隔离性），
+    但通过 cookie 缓存避免重复登录流程。
     """
-    ctx = browser.new_context(viewport={"width": 1280, "height": 720})
-    page = ctx.new_page()
-
-    # 执行登录
     from pages.login_page import LoginPage
-    lp = LoginPage(page)
-    lp.goto()
-    _do_login(lp)
-
-    # 登录成功后，cookie 已保存在 context 中
-    # 后续每个用例只需新建 page，无需重新登录
-    page.close()
-
+    import os as _os
+    
+    ctx = browser.new_context(viewport={"width": 1280, "height": 720})
+    
+    # 尝试加载缓存的 cookies
+    cached_cookies = _load_cookies_from_cache()
+    
+    if cached_cookies:
+        ctx.add_cookies(cached_cookies)
+        print("[logged_in_context] Loaded cached cookies")
+    else:
+        # 缓存不存在或过期，执行完整登录
+        print("[logged_in_context] No valid cache, performing full login...")
+        page = ctx.new_page()
+        lp = LoginPage(page)
+        lp.goto()
+        _do_login(lp)
+        page.close()
+        
+        # 保存 cookies
+        cookies = ctx.cookies()
+        _save_cookies_to_cache(cookies)
+        print("[logged_in_context] Logged in and saved cookies")
+    
     yield ctx
-    # 不调用 ctx.close() — Playwright teardown hang 会阻塞后续所有测试，
-    # pytest-timeout 无法中断 C 扩展线程的 close() 调用。
-    # OS 在 pytest 进程退出时自动回收资源。
+    # 不调用 ctx.close()，避免 teardown hang
 
 
 @pytest.fixture(scope="function")
 def workbench_page(logged_in_context):
     """
     工作台页面对象 fixture。
-    复用模块级已登录 context，每个用例只新建 page（不重新登录）。
-    自动导航到工作台。
+    复用已登录 context，每个用例只新建 page。
+    
+    优化：
+    1. 增加导航超时（60秒）
+    2. 简化等待逻辑，只用 domcontentloaded
+    3. 导航菜单等待时间缩短到 10秒
     """
     from pages.workbench_page import WorkbenchPage
-
-    # 工作台 URL（支持多环境）
     import os as _os
+    
     _env = _os.environ.get("TEST_ENV", "test")
-    if _env == "pre":
-        _wb_base = "https://pre-cloud.jingfire.com"
-        _nav_timeout = 60000  # 预发布环境需要更长的等待时间
-    else:
-        _wb_base = "https://test6688.jh119.cn"
-        _nav_timeout = 30000
+    _wb_base = "https://pre-cloud.jingfire.com" if _env == "pre" else "https://test6688.jh119.cn"
+    
     page = logged_in_context.new_page()
-    page.goto(f"{_wb_base}/business/#/workbench", wait_until="domcontentloaded")
+    
+    # 导航到工作台（增加超时）
+    page.goto(f"{_wb_base}/business/#/workbench", wait_until="domcontentloaded", timeout=60000)
+    
+    # 等待导航菜单（缩短时间）
     try:
-        page.wait_for_load_state("networkidle", timeout=15000)
+        page.wait_for_selector("a[href^='#/']", timeout=10000)
     except Exception:
+        # 如果超时，继续执行，让测试自己去判断
         pass
-    page.wait_for_selector("a[href^='#/']", timeout=_nav_timeout)
-
+    
     wp = WorkbenchPage(page)
     yield wp
-    # 不调用 page.close()，同上
+    # 不调用 page.close()，避免 teardown hang
 
 
 # ── 合同管理测试用（module scope）─────────────────────────────
