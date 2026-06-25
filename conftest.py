@@ -325,20 +325,21 @@ def _get_cookie_cache_file():
     key = _get_cookie_cache_key()
     return os.path.join(_COOKIE_CACHE_DIR, f"{key}.json")
 
-def _save_cookies_to_cache(cookies):
-    """保存 cookies 到缓存文件"""
+def _save_state_to_cache(state):
+    """保存 storage_state（cookies + localStorage）到缓存文件"""
     cache_file = _get_cookie_cache_file()
     with _COOKIE_CACHE_LOCK:
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump({
-                "cookies": cookies,
+                "state": state,
                 "timestamp": time.time(),
                 "env": os.environ.get("TEST_ENV", "test")
             }, f)
-    print(f"[cookie_cache] Saved to {cache_file}")
+    origins = state.get("origins", [])
+    print(f"[session_cache] Saved (cookies={len(state.get('cookies',[]))}, origins={len(origins)})")
 
-def _load_cookies_from_cache():
-    """从缓存文件加载 cookies，如果不存在或过期返回 None"""
+def _load_state_from_cache():
+    """从缓存文件加载 storage_state，如果不存在或过期返回 None"""
     cache_file = _get_cookie_cache_file()
     if not os.path.exists(cache_file):
         return None
@@ -354,21 +355,21 @@ def _load_cookies_from_cache():
         
         # 检查是否过期（30分钟）
         if time.time() - data.get("timestamp", 0) > 1800:
-            print(f"[cookie_cache] Cache expired (>30min)")
+            print(f"[session_cache] Cache expired (>30min)")
             return None
         
-        print(f"[cookie_cache] Loaded from cache")
-        return data.get("cookies")
+        print(f"[session_cache] Loaded from cache")
+        return data.get("state")
     except Exception as e:
-        print(f"[cookie_cache] Load failed: {e}")
+        print(f"[session_cache] Load failed: {e}")
         return None
 
 def _clear_cookie_cache():
-    """清除 cookie 缓存"""
+    """清除 session 缓存（强制下次重新登录）"""
     cache_file = _get_cookie_cache_file()
     if os.path.exists(cache_file):
         os.remove(cache_file)
-        print(f"[cookie_cache] Cleared")
+        print(f"[session_cache] Cleared")
 
 
 # ── 共享登录辅助 ──────────────────────────────────────────────
@@ -403,16 +404,15 @@ def logged_in_context(browser):
     from pages.login_page import LoginPage
     import os as _os
     
-    ctx = browser.new_context(viewport={"width": 1280, "height": 720})
+    # 尝试加载缓存的 storage_state（含 cookies + localStorage）
+    cached_state = _load_state_from_cache()
     
-    # 尝试加载缓存的 cookies
-    cached_cookies = _load_cookies_from_cache()
-    
-    if cached_cookies:
-        ctx.add_cookies(cached_cookies)
-        print("[logged_in_context] Loaded cached cookies")
+    if cached_state:
+        ctx = browser.new_context(storage_state=cached_state, viewport={"width": 1280, "height": 720})
+        print("[logged_in_context] Loaded cached session (cookies + localStorage)")
     else:
         # 缓存不存在或过期，执行完整登录
+        ctx = browser.new_context(viewport={"width": 1280, "height": 720})
         print("[logged_in_context] No valid cache, performing full login...")
         page = ctx.new_page()
         lp = LoginPage(page)
@@ -420,10 +420,10 @@ def logged_in_context(browser):
         _do_login(lp)
         page.close()
         
-        # 保存 cookies
-        cookies = ctx.cookies()
-        _save_cookies_to_cache(cookies)
-        print("[logged_in_context] Logged in and saved cookies")
+        # 保存 storage_state（含 cookies + localStorage）
+        state = ctx.storage_state()
+        _save_state_to_cache(state)
+        print("[logged_in_context] Logged in and saved session")
     
     yield ctx
     # 不调用 ctx.close()，避免 teardown hang
@@ -447,16 +447,11 @@ def workbench_page(logged_in_context):
     _wb_base = "https://pre-cloud.jingfire.com" if _env == "pre" else "https://test6688.jh119.cn"
     
     page = logged_in_context.new_page()
-    
-    # 导航到工作台（增加超时）
     page.goto(f"{_wb_base}/business/#/workbench", wait_until="domcontentloaded", timeout=60000)
-    
-    # 等待导航菜单（缩短时间）
     try:
-        page.wait_for_selector("a[href^='#/']", timeout=10000)
-    except Exception:
-        # 如果超时，继续执行，让测试自己去判断
-        pass
+        page.wait_for_selector("a[href^='#/']", timeout=60000)
+    except Exception as e:
+        print(f"[workbench_page] WARNING: nav menu wait timeout: {e}")
     
     wp = WorkbenchPage(page)
     yield wp
